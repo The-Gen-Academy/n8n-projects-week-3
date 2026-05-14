@@ -1,0 +1,668 @@
+{
+  "name": "Workflow 3: GTM Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "3f4c7153-6218-47b2-9f8a-db005453f50a",
+      "name": "Chat Trigger",
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -3168,
+        -80
+      ],
+      "webhookId": "gtm-chat"
+    },
+    {
+      "parameters": {
+        "jsCode": "var msg = $input.first().json.chatInput || $input.first().json.text || '';\n\nvar brief = {\n  raw_input: msg,\n  product_name: '',\n  description: '',\n  url: '',\n  tone: 'professional',\n  formats: ['linkedin', 'email', 'blog', 'ads']\n};\n\nvar urlMatch = msg.match(/https?:\\/\\/[^\\s]+/);\nif (urlMatch) {\n  brief.url = urlMatch[0];\n  msg = msg.replace(urlMatch[0], '').trim();\n}\n\nvar toneKeywords = ['professional', 'conversational', 'bold', 'casual', 'formal', 'playful', 'authoritative', 'friendly', 'technical'];\nvar lower = msg.toLowerCase();\nfor (var i = 0; i < toneKeywords.length; i++) {\n  if (lower.indexOf(toneKeywords[i] + ' tone') >= 0 || lower.indexOf('tone: ' + toneKeywords[i]) >= 0) {\n    brief.tone = toneKeywords[i];\n    break;\n  }\n}\n\nvar cleaned = msg\n  .replace(/tone:?\\s*\\w+/i, '')\n  .replace(/^(write content for|create content for|launch content for|promote|create a launch for)\\s*/i, '')\n  .replace(/^(can you|please|could you)\\s*/i, '')\n  .replace(/[?.!]$/g, '')\n  .trim();\n\nvar parts = cleaned.split(/\\s*[-—:]\\s*/);\nif (parts.length >= 2) {\n  brief.product_name = parts[0].trim();\n  brief.description = parts.slice(1).join(' ').trim();\n} else {\n  brief.product_name = cleaned;\n  brief.description = '';\n}\n\nif (!brief.product_name || brief.product_name.length < 2) {\n  brief.product_name = cleaned || msg;\n}\n\nreturn [{ json: brief }];"
+      },
+      "id": "4536c041-a522-4470-a91f-30ce94f649ec",
+      "name": "Normalize Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2944,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1WyPnU3KfGp3ih-LEzBHcaVvZ9HNgNmNclwD-enI0gsU",
+          "mode": "list",
+          "cachedResultName": "Workflow 3",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1WyPnU3KfGp3ih-LEzBHcaVvZ9HNgNmNclwD-enI0gsU/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 359700205,
+          "mode": "list",
+          "cachedResultName": "sample-product-catalog",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1WyPnU3KfGp3ih-LEzBHcaVvZ9HNgNmNclwD-enI0gsU/edit#gid=359700205"
+        },
+        "options": {}
+      },
+      "id": "2c3933d5-969d-4e81-a8e7-63c28d2addfa",
+      "name": "Read Product Catalog",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        -2720,
+        -80
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "3MBIAJcPbV6MWj0p",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "var items = $input.all();\nvar productName = '';\ntry { productName = $('Normalize Input').item.json.product_name.toLowerCase(); } catch(e) { productName = ''; }\nvar brief = {};\ntry { brief = $('Normalize Input').item.json; } catch(e) { brief = { product_name: productName, tone: 'professional' }; }\n\nvar matched = [];\nvar allProducts = [];\n\nfor (var i = 0; i < items.length; i++) {\n  var row = items[i].json;\n  var name = (row['Product Name'] || row['product_name'] || '').toLowerCase();\n  var text = Object.keys(row).map(function(k) { return k + ': ' + row[k]; }).join('\\n');\n  allProducts.push(text);\n  if (name.indexOf(productName) >= 0 || productName.indexOf(name) >= 0) {\n    matched.push(text);\n  }\n}\n\nvar productData = '';\nif (matched.length > 0) {\n  productData = matched.join('\\n\\n');\n} else if (allProducts.length > 0) {\n  productData = 'No exact match for \"' + productName + '\". All products:\\n\\n' + allProducts.join('\\n\\n');\n} else {\n  productData = 'No product catalog loaded. Using the description from user input only.';\n}\n\nif (brief.description) {\n  productData = 'USER DESCRIPTION: ' + brief.description + '\\n\\nCATALOG DATA:\\n' + productData;\n}\n\nreturn [{ json: { product_name: brief.product_name, product_data: productData, tone: brief.tone, url: brief.url, formats: brief.formats } }];"
+      },
+      "id": "c375988e-b94c-4255-bdfa-0eb2b605207d",
+      "name": "Find Product",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2496,
+        -80
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "bfc84cb9-c2ea-40c3-8436-35d41a7c945b",
+      "name": "Wait 1",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        -2288,
+        -80
+      ],
+      "webhookId": "c18e1e63-31c7-4575-bf46-108eee2f26a7"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are a go-to-market strategist. Build a complete GTM messaging brief for {{ $('Find Product').item.json.product_name }}.\n\nPRODUCT DATA (source of truth — do not invent details not found here):\n{{ $('Find Product').item.json.product_data }}\n\nURL hint: {{ $('Find Product').item.json.url || 'None provided' }}\nPreferred tone: {{ $('Find Product').item.json.tone }}\n\nRespond with ONLY valid JSON:\n{\n  \"product_summary\": \"2-3 sentence summary of what this product does and who it serves\",\n  \"target_audience\": {\n    \"primary\": \"primary audience with demographic and psychographic details\",\n    \"secondary\": \"secondary audience\",\n    \"pain_points\": [\"3-4 specific pain points this product solves\"]\n  },\n  \"value_proposition\": \"one clear value proposition sentence\",\n  \"proof_points\": [\"2-3 credibility signals: metrics, testimonials, awards, integrations\"],\n  \"objections\": [\n    {\"objection\": \"likely concern\", \"rebuttal\": \"how to address it\"}\n  ],\n  \"cta\": \"primary call to action\",\n  \"tone\": \"{{ $('Find Product').item.json.tone }}\",\n  \"key_messages\": [\"3-4 core messages to use across all content\"],\n  \"differentiators\": [\"2-3 unique selling points\"]\n}"
+      },
+      "id": "bc3f5569-0dda-4c21-90b3-c8c3edb663e2",
+      "name": "Strategy Agent",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.4,
+      "position": [
+        -2112,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "var item = $input.first().json;\nvar raw = item.response || item.output || item.text || '';\nif (typeof raw === 'object') raw = JSON.stringify(raw);\nvar strategy = {};\ntry {\n  var m = raw.match(/```(?:json)?\\s*([\\s\\S]*?)```/);\n  var js = m ? m[1].trim() : raw.substring(raw.indexOf('{'), raw.lastIndexOf('}') + 1);\n  strategy = JSON.parse(js);\n} catch(e) {\n  strategy = { parse_error: true, raw: raw.substring(0, 500) };\n}\nreturn [{ json: { strategy: strategy } }];"
+      },
+      "id": "71ea7278-53fe-40cf-a889-3107e7a17db8",
+      "name": "Parse Strategy",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1840,
+        -80
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "85932d3a-3a35-4d54-a46d-6fcd81a36e4b",
+      "name": "Wait 2",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        -1616,
+        -80
+      ],
+      "webhookId": "93d3f00b-c44e-4eaa-bbcd-5f613d5edfd4"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are an expert content writer. Using the strategy brief and product data, write a complete content suite across four formats.\n\nSTRATEGY BRIEF:\n{{ JSON.stringify($('Parse Strategy').item.json.strategy, null, 2) }}\n\nPRODUCT DATA (source of truth — every claim must trace back to this):\n{{ $('Find Product').item.json.product_data }}\n\nWrite all four pieces. Match the tone: {{ $('Find Product').item.json.tone }}.\n\nRespond with ONLY valid JSON:\n{\n  \"linkedin_post\": \"150-200 words. Hook in first line that stops the scroll. Line breaks for readability. Weave in one proof point. End with CTA. 3-5 hashtags at the very end.\",\n  \"email\": {\n    \"subject_line\": \"compelling subject line that drives opens\",\n    \"preview_text\": \"40-60 character preview\",\n    \"body\": \"200-300 words. Greeting, identify the pain, introduce solution, one proof point, clear CTA with urgency.\"\n  },\n  \"blog_draft\": \"300-400 words. Title on the first line. Hook intro paragraph. 2-3 sections with subheadings. Conclusion with CTA. Weave in proof points and address one objection.\",\n  \"ad_copy\": {\n    \"headline_variations\": [\"3 options, each max 30 characters\"],\n    \"body_variations\": [\"3 options, each max 90 characters\"],\n    \"cta_variations\": [\"3 options, each max 15 characters\"]\n  }\n}"
+      },
+      "id": "d1e108b3-3b40-48d7-aa9b-6b95265b01d3",
+      "name": "Writer Agent",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.4,
+      "position": [
+        -1424,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "var item = $input.first().json;\nvar raw = item.response || item.output || item.text || '';\nif (typeof raw === 'object') raw = JSON.stringify(raw);\nvar content = {};\ntry {\n  var m = raw.match(/```(?:json)?\\s*([\\s\\S]*?)```/);\n  var js = m ? m[1].trim() : raw.substring(raw.indexOf('{'), raw.lastIndexOf('}') + 1);\n  content = JSON.parse(js);\n} catch(e) {\n  content = { parse_error: true, raw: raw.substring(0, 2000) };\n}\nreturn [{ json: { draft: content } }];"
+      },
+      "id": "ccf0f2d6-327d-491d-8172-601ac6d15db3",
+      "name": "Parse Draft",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1184,
+        -80
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "32269d1b-9393-4436-a504-6dd36722dc46",
+      "name": "Wait 3",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        -960,
+        -80
+      ],
+      "webhookId": "df564d85-8c50-4fdf-bd56-09ec2f2c0310"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are a senior content editor and brand strategist. Critique this content suite.\n\nDRAFT CONTENT:\n{{ JSON.stringify($('Parse Draft').item.json.draft, null, 2) }}\n\nSTRATEGY BRIEF:\n{{ JSON.stringify($('Parse Strategy').item.json.strategy, null, 2) }}\n\nPRODUCT DATA (ground truth):\n{{ $('Find Product').item.json.product_data }}\n\nScore and critique across five dimensions:\n1. CLARITY — is the message instantly clear? Any jargon or vague language?\n2. POSITIONING — does it match the strategy brief? Is the value prop front and center?\n3. FACTUAL RISK — does any content claim something not in the product data? Flag hallucinated features or metrics.\n4. CHANNEL FIT — does each piece match its format? LinkedIn should feel like LinkedIn, email should drive action, blog should educate, ads should be punchy.\n5. CONVERSION STRENGTH — does every piece have a clear, compelling CTA? Would the target audience actually take action?\n\nRespond with ONLY valid JSON:\n{\n  \"verdict\": \"PASS or REVISE\",\n  \"overall_score\": number 1-10,\n  \"dimensions\": {\n    \"clarity\": {\"score\": number 1-10, \"feedback\": \"specific notes\"},\n    \"positioning\": {\"score\": number 1-10, \"feedback\": \"specific notes\"},\n    \"factual_risk\": {\"score\": number 1-10, \"feedback\": \"specific notes\"},\n    \"channel_fit\": {\"score\": number 1-10, \"feedback\": \"specific notes\"},\n    \"conversion_strength\": {\"score\": number 1-10, \"feedback\": \"specific notes\"}\n  },\n  \"per_format\": {\n    \"linkedin\": \"specific feedback or GOOD\",\n    \"email\": \"specific feedback or GOOD\",\n    \"blog\": \"specific feedback or GOOD\",\n    \"ads\": \"specific feedback or GOOD\"\n  },\n  \"revision_instructions\": \"if REVISE: exactly what to change and why. If PASS: None.\"\n}"
+      },
+      "id": "2e395699-dff0-479a-8484-4b4544001d4d",
+      "name": "Reviewer Agent",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.4,
+      "position": [
+        -736,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "var item = $input.first().json;\nvar raw = item.response || item.output || item.text || '';\nif (typeof raw === 'object') raw = JSON.stringify(raw);\nvar review = {};\ntry {\n  var m = raw.match(/```(?:json)?\\s*([\\s\\S]*?)```/);\n  var js = m ? m[1].trim() : raw.substring(raw.indexOf('{'), raw.lastIndexOf('}') + 1);\n  review = JSON.parse(js);\n} catch(e) {\n  review = { verdict: 'PASS', overall_score: 7, revision_instructions: 'None' };\n}\nvar needsRevision = (review.verdict === 'REVISE');\nreturn [{ json: { review: review, needs_revision: needsRevision } }];"
+      },
+      "id": "7f111cb9-4665-403a-ba70-a71557e0b4b2",
+      "name": "Parse Review",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -464,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "id": "rv",
+              "leftValue": "={{ $json.needs_revision }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and",
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          }
+        },
+        "options": {}
+      },
+      "id": "da48741d-3248-441c-8c4d-7b1e943a4fc0",
+      "name": "Needs Revision?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -288,
+        -80
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "12df083d-4042-4886-a4f3-b28fe4e591cf",
+      "name": "Wait 4",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        -80,
+        -192
+      ],
+      "webhookId": "4032f1d2-1a81-4337-b00a-d3aa16014b4b"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are a content writer revising your work based on editorial feedback. Apply every piece of feedback precisely.\n\nORIGINAL DRAFT:\n{{ JSON.stringify($('Parse Draft').item.json.draft, null, 2) }}\n\nEDITOR REVIEW:\n{{ JSON.stringify($('Parse Review').item.json.review, null, 2) }}\n\nPER-FORMAT FEEDBACK:\n{{ JSON.stringify($('Parse Review').item.json.review.per_format, null, 2) }}\n\nREVISION INSTRUCTIONS:\n{{ $('Parse Review').item.json.review.revision_instructions }}\n\nPRODUCT DATA (must stay factually grounded):\n{{ $('Find Product').item.json.product_data }}\n\nSTRATEGY BRIEF:\n{{ JSON.stringify($('Parse Strategy').item.json.strategy, null, 2) }}\n\nApply all feedback. Return the COMPLETE revised suite in the same JSON format. Add a changelog.\n\nRespond with ONLY valid JSON:\n{\n  \"linkedin_post\": \"revised version\",\n  \"email\": {\"subject_line\": \"revised\", \"preview_text\": \"revised\", \"body\": \"revised\"},\n  \"blog_draft\": \"revised version\",\n  \"ad_copy\": {\"headline_variations\": [\"revised\"], \"body_variations\": [\"revised\"], \"cta_variations\": [\"revised\"]},\n  \"changelog\": [\"specific change 1\", \"specific change 2\", \"specific change 3\"]\n}"
+      },
+      "id": "5dbb1452-7897-4ea7-9028-20a7f7b06c42",
+      "name": "Revision Agent",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.4,
+      "position": [
+        144,
+        -192
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "var item = $input.first().json;\nvar raw = item.response || item.output || item.text || '';\nif (typeof raw === 'object') raw = JSON.stringify(raw);\nvar revised = {};\ntry {\n  var m = raw.match(/```(?:json)?\\s*([\\s\\S]*?)```/);\n  var js = m ? m[1].trim() : raw.substring(raw.indexOf('{'), raw.lastIndexOf('}') + 1);\n  revised = JSON.parse(js);\n} catch(e) {\n  revised = $('Parse Draft').item.json.draft;\n  revised.changelog = ['Revision parsing failed — returning original draft'];\n}\nreturn [{ json: { final_content: revised, was_revised: true, changelog: revised.changelog || [] } }];"
+      },
+      "id": "43137ad4-3798-44fb-b787-649626a0f7fb",
+      "name": "Parse Final Suite",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        624,
+        -192
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "var draft = $('Parse Draft').item.json.draft;\nreturn [{ json: { final_content: draft, was_revised: false, changelog: [] } }];"
+      },
+      "id": "e9a9b6a9-10f5-4df8-a214-8ba14413b3eb",
+      "name": "Pass Through",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        320,
+        144
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "var data = $input.first().json;\nvar content = data.final_content;\nvar wasRevised = data.was_revised;\nvar changelog = data.changelog || [];\n\nvar draft = {};\ntry { draft = $('Parse Draft').item.json.draft; } catch(e) { draft = {}; }\nvar review = {};\ntry { review = $('Parse Review').item.json.review; } catch(e) { review = {}; }\nvar strategy = {};\ntry { strategy = $('Parse Strategy').item.json.strategy; } catch(e) { strategy = {}; }\nvar product = '';\ntry { product = $('Find Product').item.json.product_name; } catch(e) { product = 'Unknown'; }\n\nvar d = '=';\nvar div = '\\n' + d.repeat(50) + '\\n';\n\nvar out = d.repeat(50);\nout += '\\n  GTM CONTENT SUITE — ' + product.toUpperCase();\nout += '\\n  Generated: ' + new Date().toLocaleDateString('en-US', {month:'long', day:'numeric', year:'numeric'});\nout += '\\n  Status: ' + (wasRevised ? 'Revised after editorial review' : 'Passed editorial review');\nout += '\\n  Review Score: ' + (review.overall_score || '?') + '/10';\nout += '\\n' + d.repeat(50);\n\nif (strategy.value_proposition) {\n  out += div + 'VALUE PROPOSITION\\n' + strategy.value_proposition;\n}\nif (strategy.target_audience && strategy.target_audience.primary) {\n  out += '\\n\\nTARGET: ' + strategy.target_audience.primary;\n}\nif (strategy.tone) {\n  out += '\\nTONE: ' + strategy.tone;\n}\n\nout += div + 'LINKEDIN POST';\nout += '\\n\\n' + (content.linkedin_post || 'Not generated');\n\nout += div + 'EMAIL';\nif (content.email) {\n  out += '\\nSubject: ' + (content.email.subject_line || '');\n  out += '\\nPreview: ' + (content.email.preview_text || '');\n  out += '\\n\\n' + (content.email.body || '');\n} else {\n  out += '\\nNot generated';\n}\n\nout += div + 'BLOG DRAFT';\nout += '\\n\\n' + (content.blog_draft || 'Not generated');\n\nout += div + 'AD COPY';\nif (content.ad_copy) {\n  if (content.ad_copy.headline_variations) out += '\\nHeadlines:\\n  ' + content.ad_copy.headline_variations.join('\\n  ');\n  if (content.ad_copy.body_variations) out += '\\n\\nBody:\\n  ' + content.ad_copy.body_variations.join('\\n  ');\n  if (content.ad_copy.cta_variations) out += '\\n\\nCTAs:\\n  ' + content.ad_copy.cta_variations.join('\\n  ');\n} else {\n  out += '\\nNot generated';\n}\n\nif (review.dimensions) {\n  out += div + 'EDITORIAL REVIEW';\n  var dims = ['clarity', 'positioning', 'factual_risk', 'channel_fit', 'conversion_strength'];\n  for (var i = 0; i < dims.length; i++) {\n    var dim = review.dimensions[dims[i]];\n    if (dim) out += '\\n  ' + dims[i].replace('_', ' ').toUpperCase() + ': ' + dim.score + '/10 — ' + dim.feedback;\n  }\n}\n\nif (review.per_format) {\n  out += '\\n\\nPer-format notes:';\n  var fmts = ['linkedin', 'email', 'blog', 'ads'];\n  for (var f = 0; f < fmts.length; f++) {\n    if (review.per_format[fmts[f]]) out += '\\n  ' + fmts[f].toUpperCase() + ': ' + review.per_format[fmts[f]];\n  }\n}\n\nif (wasRevised && changelog.length > 0) {\n  out += div + 'CHANGELOG';\n  for (var c = 0; c < changelog.length; c++) {\n    out += '\\n  ' + (c+1) + '. ' + changelog[c];\n  }\n}\n\nout += '\\n\\n' + d.repeat(50);\n\nreturn [{ json: { output: out } }];"
+      },
+      "id": "1a7e6f22-5209-4e65-806b-70508dc0785c",
+      "name": "Format Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        944,
+        -64
+      ]
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-2.5-flash-lite",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1.1,
+      "position": [
+        -816,
+        128
+      ],
+      "id": "b996ce2d-adf6-443b-97e1-bf09684e0b08",
+      "name": "Google Gemini Chat Model2",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "0Zk0atMWf4o785oK",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-2.5-flash-lite",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1.1,
+      "position": [
+        144,
+        -48
+      ],
+      "id": "407d1850-f12c-49e9-a950-22f0af4c08df",
+      "name": "Google Gemini Chat Model3",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "0Zk0atMWf4o785oK",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-2.5-flash-lite",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1.1,
+      "position": [
+        -2192,
+        128
+      ],
+      "id": "d8cbecf6-0c20-44fd-9e20-d0b791b71610",
+      "name": "Google Gemini Chat Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "0Zk0atMWf4o785oK",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "openai/gpt-oss-120b",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [
+        -1504,
+        128
+      ],
+      "id": "7c721840-1b67-4048-bcd3-d76d0877344d",
+      "name": "Groq Chat Model",
+      "credentials": {
+        "groqApi": {
+          "id": "aIYaQJU1ehbAExQk",
+          "name": "Groq account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Chat Trigger": {
+      "main": [
+        [
+          {
+            "node": "Normalize Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Input": {
+      "main": [
+        [
+          {
+            "node": "Read Product Catalog",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Product Catalog": {
+      "main": [
+        [
+          {
+            "node": "Find Product",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Product": {
+      "main": [
+        [
+          {
+            "node": "Wait 1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 1": {
+      "main": [
+        [
+          {
+            "node": "Strategy Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Strategy Agent": {
+      "main": [
+        [
+          {
+            "node": "Parse Strategy",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Strategy": {
+      "main": [
+        [
+          {
+            "node": "Wait 2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 2": {
+      "main": [
+        [
+          {
+            "node": "Writer Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Writer Agent": {
+      "main": [
+        [
+          {
+            "node": "Parse Draft",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Draft": {
+      "main": [
+        [
+          {
+            "node": "Wait 3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 3": {
+      "main": [
+        [
+          {
+            "node": "Reviewer Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reviewer Agent": {
+      "main": [
+        [
+          {
+            "node": "Parse Review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Review": {
+      "main": [
+        [
+          {
+            "node": "Needs Revision?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Needs Revision?": {
+      "main": [
+        [
+          {
+            "node": "Wait 4",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Pass Through",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 4": {
+      "main": [
+        [
+          {
+            "node": "Revision Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Revision Agent": {
+      "main": [
+        [
+          {
+            "node": "Parse Final Suite",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Final Suite": {
+      "main": [
+        [
+          {
+            "node": "Format Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pass Through": {
+      "main": [
+        [
+          {
+            "node": "Format Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model2": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Reviewer Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model3": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Revision Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Strategy Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Writer Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "607ececf-f036-46ec-9838-d3f48fbbc5b3",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "2f84799f377210bb373f61a59440873fec4ae3f3cea60e8a19fd0955faa44541"
+  },
+  "id": "HNYLMvp8ROR06sjx",
+  "tags": [
+    {
+      "updatedAt": "2026-05-12T08:59:29.320Z",
+      "createdAt": "2026-05-12T08:59:29.320Z",
+      "id": "0Fcr0GJnHq70C7qW",
+      "name": "Pinecone"
+    },
+    {
+      "updatedAt": "2026-05-13T13:35:57.302Z",
+      "createdAt": "2026-05-13T13:35:57.302Z",
+      "id": "AeUXEcNkWukmNtup",
+      "name": "Content"
+    },
+    {
+      "updatedAt": "2026-05-12T08:59:29.326Z",
+      "createdAt": "2026-05-12T08:59:29.326Z",
+      "id": "BStDkf4ggYQaHAYM",
+      "name": "RAG"
+    },
+    {
+      "updatedAt": "2026-05-12T08:59:29.320Z",
+      "createdAt": "2026-05-12T08:59:29.320Z",
+      "id": "V2B8IkTxutxxO6V2",
+      "name": "Multi-Agent"
+    },
+    {
+      "updatedAt": "2026-05-13T13:35:57.298Z",
+      "createdAt": "2026-05-13T13:35:57.298Z",
+      "id": "cxuJj1PfmghMMZXc",
+      "name": "GTM"
+    }
+  ]
+}

@@ -1,0 +1,895 @@
+{
+  "name": "Workflow 1: Competitive Intel Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "d045593d-be93-45a0-9655-db96d4c4c510",
+      "name": "Chat Trigger",
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -1760,
+        112
+      ],
+      "webhookId": "ci-chat"
+    },
+    {
+      "parameters": {
+        "jsCode": "var msg = $input.first().json.chatInput || $input.first().json.text || '';\nvar cleaned = msg.trim().replace(/^(research|look up|analyze|find competitors for|check out)\\s*/i, '').replace(/^(can you|please|could you)\\s*/i, '').replace(/[?.!]$/g, '').trim();\nreturn [{ json: { company_name: cleaned || msg.trim() } }];"
+      },
+      "id": "3b0a1847-e1d4-4ae7-aac9-a22bbb147f38",
+      "name": "Extract Company Name",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1536,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://serpapi.com/search.json",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "serpApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "={{ $json.company_name }} competitors 2026"
+            },
+            {
+              "name": "num",
+              "value": "10"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "66a40291-85ad-43d8-bc7e-ada461bdcca2",
+      "name": "Search Competitors",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1328,
+        112
+      ],
+      "credentials": {
+        "serpApi": {
+          "id": "NeWSVwSujsNhcR1Q",
+          "name": "SerpAPI account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "7ade924c-2d90-422b-aa5a-11a43068a14d",
+      "name": "Wait",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        -1104,
+        112
+      ],
+      "webhookId": "81a17ba2-2ffe-4aa8-b674-74adbaff1e63"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Here are search results about {{ $('Extract Company Name').item.json.company_name }} and its competitors:\n\n{{ JSON.stringify($('Search Competitors').item.json.organic_results || []).substring(0, 10000) }}\n\nIdentify the top 3 direct competitors. Respond with ONLY valid JSON:\n{\"company_summary\": \"one sentence\", \"market\": \"category\", \"competitors\": [{\"name\": \"Name\", \"website\": \"https://site.com\", \"reason\": \"why\"}]}"
+      },
+      "id": "15ad340a-edfd-4264-8265-c78a5c36ae96",
+      "name": "Identify Competitors",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.4,
+      "position": [
+        -880,
+        112
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "368a1674-15b7-4b38-8c47-abe359fa8127",
+      "name": "Wait 2",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        -608,
+        112
+      ],
+      "webhookId": "e5ab1f30-b86c-48cb-a9b7-b86920a320e4"
+    },
+    {
+      "parameters": {
+        "jsCode": "var item = $input.first().json;\nvar raw = item.response || item.output || item.text || '';\nif (typeof raw === 'object') raw = JSON.stringify(raw);\n\nfunction buildItems(parsed) {\n  return parsed.competitors.slice(0, 3).map(function(c) {\n    return { json: { competitor_name: c.name, competitor_website: c.website || 'https://' + c.name.toLowerCase().replace(/\\s+/g, '') + '.com', reason: c.reason || 'Direct competitor', target_company: parsed.company_summary || '', market: parsed.market || '' } };\n  });\n}\nfunction tryParse(str) { try { var p = JSON.parse(str); if (p.competitors && Array.isArray(p.competitors)) return p; } catch(e) {} return null; }\nvar result = null;\nvar m = raw.match(/```(?:json)?\\s*([\\s\\S]*?)```/);\nif (m) result = tryParse(m[1].trim());\nif (!result) { var s = raw.indexOf('{'); var e = raw.lastIndexOf('}'); if (s >= 0 && e > s) result = tryParse(raw.substring(s, e + 1)); }\nif (!result) throw new Error('Parse failed: ' + raw.substring(0, 300));\nreturn buildItems(result);"
+      },
+      "id": "47fbbb49-4be9-4446-be58-e80e80c53bab",
+      "name": "Parse Competitors",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -448,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "options": {
+          "reset": false
+        }
+      },
+      "id": "c38d425d-09da-4ec2-b129-2ae033213ddb",
+      "name": "Loop",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -224,
+        48
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.competitor_website }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "a1bfe176-4ebb-4cdb-81f6-b2a8786c34a6",
+      "name": "Fetch Website",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        0,
+        0
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {},
+      "id": "18ddb546-b347-4419-bf44-4fa9209db140",
+      "name": "Wait 3",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        224,
+        0
+      ],
+      "webhookId": "52bb16ea-29b4-47e9-8cd1-47e02d5464cd"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Extract data from {{ $('Loop').item.json.competitor_name }}'s website:\n\n{{ $json.data ? $json.data.substring(0, 15000) : 'Website unavailable. Use your knowledge.' }}\n\nRespond with ONLY JSON:\n{\"pricing\": \"tiers and prices\", \"key_features\": \"top 5\", \"positioning\": \"tagline and audience\", \"strengths\": \"2-3\", \"weaknesses\": \"2-3\"}"
+      },
+      "id": "cf028106-5657-4485-9749-1b741fdb1f76",
+      "name": "Extract Data",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.4,
+      "position": [
+        448,
+        0
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "c934901a-744c-4e5e-aae7-0136a193203d",
+      "name": "Wait 4",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        704,
+        0
+      ],
+      "webhookId": "123773ef-399e-4304-9a4a-359ab11eb202"
+    },
+    {
+      "parameters": {
+        "url": "https://serpapi.com/search.json",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "={{ $('Loop').item.json.competitor_name }} news 2026"
+            },
+            {
+              "name": "api_key",
+              "value": "YOUR_SERPAPI_KEY"
+            },
+            {
+              "name": "num",
+              "value": "5"
+            },
+            {
+              "name": "tbm",
+              "value": "nws"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "774b2726-0134-407d-8cc1-81bec7637483",
+      "name": "Search News",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        880,
+        0
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {},
+      "id": "05e8ff86-74cc-4bb6-adb5-122dfb833abc",
+      "name": "Wait 5",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1104,
+        0
+      ],
+      "webhookId": "c5955a17-a47f-4db6-bc56-b733493e653e"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Summarize top 3 developments about {{ $('Loop').item.json.competitor_name }}:\n\n{{ JSON.stringify($json.news_results || $json.organic_results || []).substring(0, 8000) }}\n\nSingle paragraph, 150 words max. Specific dates. If nothing found, say so."
+      },
+      "id": "159fac06-f1d1-4bb3-b48b-579f00d12a6a",
+      "name": "Summarize News",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.4,
+      "position": [
+        1328,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "var comp = $('Loop').item.json;\nvar extracted = {};\ntry { var ei = $('Extract Data').item.json; var er = ei.response || ei.output || ei.text || ''; if (typeof er === 'object') er = JSON.stringify(er); var m = er.match(/```(?:json)?\\s*([\\s\\S]*?)```/); var js = m ? m[1].trim() : er.substring(er.indexOf('{'), er.lastIndexOf('}') + 1); extracted = JSON.parse(js); } catch(e) { extracted = { pricing: 'Parse error', key_features: '-', positioning: '-', strengths: '-', weaknesses: '-' }; }\nvar ni = $input.first().json; var news = ni.response || ni.output || ni.text || 'No news';\nif (typeof news === 'object') news = JSON.stringify(news);\nreturn [{ json: { timestamp: new Date().toISOString(), company_name: comp.competitor_name, reason: comp.reason, pricing: extracted.pricing || '-', key_features: typeof extracted.key_features === 'object' ? JSON.stringify(extracted.key_features) : (extracted.key_features || '-'), positioning: extracted.positioning || '-', strengths: typeof extracted.strengths === 'object' ? JSON.stringify(extracted.strengths) : (extracted.strengths || '-'), weaknesses: typeof extracted.weaknesses === 'object' ? JSON.stringify(extracted.weaknesses) : (extracted.weaknesses || '-'), recent_news: String(news).trim() } }];"
+      },
+      "id": "5fc29884-8c72-483e-97e5-4396c07ca3d1",
+      "name": "Assemble Row",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1584,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1sdv0vHRCAdMIw3JwEMTYOMHYeQQ5SqPbVW9sb6Xci7Y",
+          "mode": "list",
+          "cachedResultName": "Competition",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1sdv0vHRCAdMIw3JwEMTYOMHYeQQ5SqPbVW9sb6Xci7Y/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1sdv0vHRCAdMIw3JwEMTYOMHYeQQ5SqPbVW9sb6Xci7Y/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {
+            "timestamp": "={{ $json.timestamp }}",
+            "company_name": "={{ $json.company_name }}",
+            "pricing": "={{ $json.pricing }}",
+            "key_features": "={{ $json.key_features }}",
+            "positioning": "={{ $json.positioning }}",
+            "strengths": "={{ $json.strengths }}",
+            "weaknesses": "={{ $json.weaknesses }}",
+            "recent_news": "={{ $json.recent_news }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "timestamp",
+              "displayName": "timestamp",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "company_name",
+              "displayName": "company_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "reason",
+              "displayName": "reason",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "pricing",
+              "displayName": "pricing",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "key_features",
+              "displayName": "key_features",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "positioning",
+              "displayName": "positioning",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "strengths",
+              "displayName": "strengths",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "weaknesses",
+              "displayName": "weaknesses",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "recent_news",
+              "displayName": "recent_news",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "29ebf848-aa74-4f2b-9fcf-d089f14f448a",
+      "name": "Write to Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        1760,
+        0
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "3MBIAJcPbV6MWj0p",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "270b01f2-343e-4ac0-a078-7ddc1e5a07b3",
+      "name": "Wait Loop",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1984,
+        0
+      ],
+      "webhookId": "75f66fac-e77b-4adb-a6d4-17bb07f59ab3"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1sdv0vHRCAdMIw3JwEMTYOMHYeQQ5SqPbVW9sb6Xci7Y",
+          "mode": "list",
+          "cachedResultName": "Competition",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1sdv0vHRCAdMIw3JwEMTYOMHYeQQ5SqPbVW9sb6Xci7Y/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1sdv0vHRCAdMIw3JwEMTYOMHYeQQ5SqPbVW9sb6Xci7Y/edit#gid=0"
+        },
+        "options": {}
+      },
+      "id": "9d532cc7-1a37-46d1-ad60-f6fd5043b13a",
+      "name": "Read Research",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        0,
+        304
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "3MBIAJcPbV6MWj0p",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "var allRows = $input.all().map(function(i) { return i.json; });\nif (allRows.length === 0) throw new Error('No data in sheet');\nvar latest = 0;\nfor (var i = 0; i < allRows.length; i++) { var t = new Date(allRows[i]['Timestamp'] || 0).getTime(); if (t > latest) latest = t; }\nvar cutoff = latest - (30 * 60 * 1000);\nvar batch = allRows.filter(function(r) { return new Date(r['Timestamp'] || 0).getTime() >= cutoff; });\nvar company = '';\ntry { company = $('Extract Company Name').item.json.company_name; } catch(e) { company = 'target company'; }\nreturn [{ json: { target_company: company, competitor_count: batch.length, research_data: JSON.stringify(batch, null, 2) } }];"
+      },
+      "id": "adf3f107-90c5-467e-a9fd-62119c722cd7",
+      "name": "Filter Batch",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        304
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "c1c4df43-f0d2-4c3b-8649-adfce6945be9",
+      "name": "Wait Synth",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        448,
+        304
+      ],
+      "webhookId": "396d498b-1cf3-4aa6-8dae-74ea6c14864e"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Competitive intelligence briefing for {{ $json.target_company }} ({{ $json.competitor_count }} competitors).\n\nData:\n{{ $json.research_data }}\n\nWrite: TLDR (3 bullets), Competitive landscape, Pricing comparison, Feature gaps, Recent moves, 3-5 Strategic recommendations, Risks to watch. Under 800 words. Direct and opinionated."
+      },
+      "id": "32f70b9f-cf54-49eb-830e-4955d47c71be",
+      "name": "Synthesize",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.4,
+      "position": [
+        672,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "var item = $input.first().json;\nvar briefing = item.response || item.output || item.text || 'Briefing failed';\nif (typeof briefing === 'object') briefing = JSON.stringify(briefing);\nvar company = '';\ntry { company = $('Extract Company Name').item.json.company_name; } catch(e) { company = 'Unknown'; }\nvar count = '';\ntry { count = $('Filter Batch').item.json.competitor_count; } catch(e) { count = '?'; }\nvar date = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });\nreturn [{ json: { output: '**Competitive Intelligence Brief — ' + company + '**\\n_' + date + ' · ' + count + ' competitors analyzed_\\n\\n' + briefing } }];"
+      },
+      "id": "970cd42f-042b-4da4-b98d-bcdb3b6400a8",
+      "name": "Format Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1088,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1.1,
+      "position": [
+        -880,
+        288
+      ],
+      "id": "062b7256-d7b8-43a6-9198-8da34f61bab1",
+      "name": "Google Gemini Chat Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "0Zk0atMWf4o785oK",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1.1,
+      "position": [
+        448,
+        160
+      ],
+      "id": "4a062242-de2a-4cab-ab2c-ced89eff554c",
+      "name": "Google Gemini Chat Model1",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "0Zk0atMWf4o785oK",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1.1,
+      "position": [
+        1328,
+        176
+      ],
+      "id": "a242c4fa-1cc2-40d3-94df-1cdc7ad4b74f",
+      "name": "Google Gemini Chat Model2",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "0Zk0atMWf4o785oK",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1.1,
+      "position": [
+        672,
+        464
+      ],
+      "id": "9fb65f2b-9c89-44c7-954d-7da9d9ce3529",
+      "name": "Google Gemini Chat Model3",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "0Zk0atMWf4o785oK",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Chat Trigger": {
+      "main": [
+        [
+          {
+            "node": "Extract Company Name",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Company Name": {
+      "main": [
+        [
+          {
+            "node": "Search Competitors",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Competitors": {
+      "main": [
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "Identify Competitors",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Identify Competitors": {
+      "main": [
+        [
+          {
+            "node": "Wait 2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 2": {
+      "main": [
+        [
+          {
+            "node": "Parse Competitors",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Competitors": {
+      "main": [
+        [
+          {
+            "node": "Loop",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop": {
+      "main": [
+        [
+          {
+            "node": "Read Research",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Fetch Website",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Website": {
+      "main": [
+        [
+          {
+            "node": "Wait 3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 3": {
+      "main": [
+        [
+          {
+            "node": "Extract Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Data": {
+      "main": [
+        [
+          {
+            "node": "Wait 4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 4": {
+      "main": [
+        [
+          {
+            "node": "Search News",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search News": {
+      "main": [
+        [
+          {
+            "node": "Wait 5",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 5": {
+      "main": [
+        [
+          {
+            "node": "Summarize News",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Summarize News": {
+      "main": [
+        [
+          {
+            "node": "Assemble Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Assemble Row": {
+      "main": [
+        [
+          {
+            "node": "Write to Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write to Sheet": {
+      "main": [
+        [
+          {
+            "node": "Wait Loop",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait Loop": {
+      "main": [
+        [
+          {
+            "node": "Loop",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Research": {
+      "main": [
+        [
+          {
+            "node": "Filter Batch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Batch": {
+      "main": [
+        [
+          {
+            "node": "Wait Synth",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait Synth": {
+      "main": [
+        [
+          {
+            "node": "Synthesize",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Synthesize": {
+      "main": [
+        [
+          {
+            "node": "Format Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Identify Competitors",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Extract Data",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model2": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Summarize News",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model3": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Synthesize",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "198f16c2-012b-40f3-9983-297c22aa5475",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "2f84799f377210bb373f61a59440873fec4ae3f3cea60e8a19fd0955faa44541"
+  },
+  "id": "lVJ3ageYrQhGeuBO",
+  "tags": [
+    {
+      "updatedAt": "2026-05-12T07:26:18.687Z",
+      "createdAt": "2026-05-12T07:26:18.687Z",
+      "id": "KqgybUNAWuSWyoU5",
+      "name": "Competitive Intel"
+    },
+    {
+      "updatedAt": "2026-05-12T07:26:18.691Z",
+      "createdAt": "2026-05-12T07:26:18.691Z",
+      "id": "NvzpzroVMZYMyL9S",
+      "name": "Chat"
+    }
+  ]
+}
