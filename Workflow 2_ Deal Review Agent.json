@@ -1,0 +1,1508 @@
+{
+  "name": "Workflow 2: Deal Review Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "d6423ec6-1533-4c03-9600-a55f7ae06b4a",
+      "name": "Chat Trigger",
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -1232,
+        224
+      ],
+      "webhookId": "deal-review"
+    },
+    {
+      "parameters": {
+        "jsCode": "var msg = $input.first().json.chatInput || $input.first().json.text || '';\nvar dealType = 'General';\nvar lower = msg.toLowerCase();\nif (lower.indexOf('loan') >= 0 || lower.indexOf('mortgage') >= 0 || lower.indexOf('credit facility') >= 0 || lower.indexOf('bridge') >= 0) dealType = 'Loan';\nelse if (lower.indexOf('insurance') >= 0 || lower.indexOf('policy') >= 0 || lower.indexOf('liability') >= 0 || lower.indexOf('coverage') >= 0) dealType = 'Insurance';\nelse if (lower.indexOf('investment') >= 0 || lower.indexOf('fund') >= 0 || lower.indexOf('placement') >= 0 || lower.indexOf('equity') >= 0 || lower.indexOf('venture') >= 0) dealType = 'Investment';\nreturn [{ json: { deal_text: msg, deal_type: dealType } }];"
+      },
+      "id": "27ca87a7-06d6-4525-a700-898fd275449f",
+      "name": "Parse Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1008,
+        224
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "878b856b-224d-409d-9cd3-a5579469d389",
+      "name": "Wait 1",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        -800,
+        224
+      ],
+      "webhookId": "4e161713-8fdb-4c06-9c69-560d747f2ebe"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are a financial document analyst specializing in term extraction.\n\nDocument type hint: {{ $('Parse Input').item.json.deal_type }}\n\nDOCUMENT:\n{{ $('Parse Input').item.json.deal_text }}\n\nExtract every key term. Respond with ONLY valid JSON:\n{\"deal_type\": \"Loan or Insurance or Investment or Other\", \"parties\": {\"primary\": \"name and role\", \"counterparty\": \"name and role\", \"guarantors\": \"names or None\"}, \"financial_terms\": {\"principal_amount\": \"amount\", \"interest_rate\": \"rate and type\", \"maturity_date\": \"date\", \"ltv_ratio\": \"ratio or N/A\", \"fees\": \"all fees\"}, \"collateral\": {\"description\": \"details or None\", \"appraised_value\": \"value or N/A\"}, \"covenants\": [\"each covenant\"], \"termination\": {\"early_termination_fee\": \"details\", \"conditions\": \"conditions\"}, \"governing_law\": \"jurisdiction\", \"red_flags\": [\"concerns\"]}"
+      },
+      "id": "96347b2e-9421-495d-a446-ef79936936d8",
+      "name": "Extractor Agent",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.4,
+      "position": [
+        -608,
+        224
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "var item = $input.first().json;\nvar raw = item.response || item.output || item.text || '';\nif (typeof raw === 'object') raw = JSON.stringify(raw);\nvar extracted = {};\ntry {\n  var m = raw.match(/```(?:json)?\\s*([\\s\\S]*?)```/);\n  var js = m ? m[1].trim() : raw.substring(raw.indexOf('{'), raw.lastIndexOf('}') + 1);\n  extracted = JSON.parse(js);\n} catch(e) {\n  extracted = { parse_error: true, deal_type: 'General', raw: raw.substring(0, 500) };\n}\nreturn [{ json: { extracted_terms: extracted, deal_type: extracted.deal_type || 'General' } }];"
+      },
+      "id": "fab1a0e9-8511-4294-bbd6-0f3ebe0b3e5e",
+      "name": "Parse Extraction",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -352,
+        224
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.deal_type }}",
+              "rightValue": "Loan",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and",
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          }
+        },
+        "options": {}
+      },
+      "id": "f0976470-230a-4fdc-863c-a57409907be8",
+      "name": "Is Loan",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -160,
+        64
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "id": "c2",
+              "leftValue": "={{ $json.deal_type }}",
+              "rightValue": "Insurance",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and",
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          }
+        },
+        "options": {}
+      },
+      "id": "359ad906-eac4-40f2-b943-1b6282c2f428",
+      "name": "Is Insurance",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -160,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1CWIhiv0g2PMBXlQthDNkXWd8SL7rTagxd1cZLA-drac",
+          "mode": "list",
+          "cachedResultName": "Workflow 2: Compliance",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1CWIhiv0g2PMBXlQthDNkXWd8SL7rTagxd1cZLA-drac/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 2139644977,
+          "mode": "list",
+          "cachedResultName": "Loan",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1CWIhiv0g2PMBXlQthDNkXWd8SL7rTagxd1cZLA-drac/edit#gid=2139644977"
+        },
+        "options": {}
+      },
+      "id": "0ab62137-52d4-46b4-b5a6-30a2be1ef104",
+      "name": "Read Loan Rules",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        64,
+        0
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "3MBIAJcPbV6MWj0p",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1CWIhiv0g2PMBXlQthDNkXWd8SL7rTagxd1cZLA-drac",
+          "mode": "list",
+          "cachedResultName": "Workflow 2: Compliance",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1CWIhiv0g2PMBXlQthDNkXWd8SL7rTagxd1cZLA-drac/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1747312780,
+          "mode": "list",
+          "cachedResultName": "Insurance",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1CWIhiv0g2PMBXlQthDNkXWd8SL7rTagxd1cZLA-drac/edit#gid=1747312780"
+        },
+        "options": {}
+      },
+      "id": "f91c13cc-1946-4247-9e1a-632ce522cf2f",
+      "name": "Read Insurance Rules",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        64,
+        208
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "3MBIAJcPbV6MWj0p",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1CWIhiv0g2PMBXlQthDNkXWd8SL7rTagxd1cZLA-drac",
+          "mode": "list",
+          "cachedResultName": "Workflow 2: Compliance",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1CWIhiv0g2PMBXlQthDNkXWd8SL7rTagxd1cZLA-drac/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Investment",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1CWIhiv0g2PMBXlQthDNkXWd8SL7rTagxd1cZLA-drac/edit#gid=0"
+        },
+        "options": {}
+      },
+      "id": "40c13a03-acab-452b-9d02-77635bde9da9",
+      "name": "Read Investment Rules",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        64,
+        384
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "3MBIAJcPbV6MWj0p",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "var items = $input.all();\nvar rules = '';\nif (items.length > 0 && items[0].json && Object.keys(items[0].json).length > 1) {\n  rules = items.map(function(item, i) {\n    var r = item.json;\n    return 'Rule ' + (i+1) + ': ' + (r['Rule Name'] || r['rule_name'] || '') + ' â€” ' + (r['Rule Text'] || r['rule_text'] || r['Description'] || JSON.stringify(r));\n  }).join('\\n');\n}\nif (!rules || rules.length < 20) {\n  rules = 'Rule 1: Interest rate cap â€” Max 25% APR\\nRule 2: LTV limit â€” Max 80% commercial, 95% residential\\nRule 3: Party ID â€” Full legal names and addresses\\nRule 4: Maturity â€” Must be stated\\nRule 5: Senior approval â€” Over $10M needs approval\\nRule 6: Collateral â€” Description + valuation required\\nRule 7: Termination penalty â€” Max 5%\\nRule 8: Fee disclosure â€” All fees stated\\nRule 9: Sanctions â€” No sanctioned parties\\nRule 10: Governing law â€” Must be stated\\nRule 11: Flood zone â€” Active flood insurance\\nRule 12: Bankruptcy â€” Within 7yr needs enhanced diligence\\nRule 13: DSCR â€” Min 1.20x commercial\\nRule 14: Insurance â€” Property insurance required\\nRule 15: Reporting â€” Quarterly minimum';\n}\nvar extracted = {};\ntry { extracted = $('Parse Extraction').item.json.extracted_terms; } catch(e) {}\nreturn [{ json: { rules: rules, extracted_terms: extracted, deal_type: extracted.deal_type || 'General' } }];"
+      },
+      "id": "34e9e102-6ca5-4f04-8ffd-a291a7686613",
+      "name": "Assemble Compliance",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        272,
+        224
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "b37070b8-19e8-4704-8594-1d6f88b9a271",
+      "name": "Wait 2",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        480,
+        224
+      ],
+      "webhookId": "3dac670d-c7d2-4699-a8b3-5de046609072"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are a compliance officer specializing in {{ $('Assemble Compliance').item.json.deal_type }} deals.\n\nEXTRACTED TERMS:\n{{ JSON.stringify($('Assemble Compliance').item.json.extracted_terms, null, 2) }}\n\nRULES TO CHECK:\n{{ $('Assemble Compliance').item.json.rules }}\n\nCheck EACH rule. Cite specific evidence from the document.\n\nIMPORTANT â€” How to classify violations:\n\nCRITICAL VIOLATIONS (put in critical_violations â€” these block the deal):\nONLY these qualify:\n- Sanctions match or high-risk jurisdiction with no screening documentation\n- Governing law completely missing from the agreement\n- No parties identified at all (not just missing addresses â€” completely unidentified)\n- LTV exceeds the limit by more than 10 percentage points (e.g., 91%+ for commercial)\n- Interest rate exceeds the absolute cap (25% APR)\n- Early termination fee exceeds cap by more than 2 percentage points\n\nWARNINGS (put in warnings â€” needs attention but does not block):\nEverything else, including:\n- Missing addresses or incomplete party details\n- Senior approval needed but not yet documented\n- Missing or pending insurance\n- Bankruptcy history requiring enhanced diligence\n- Minor fee cap exceedances (within 2 percentage points)\n- Missing financial statements or reporting gaps\n- Documentation gaps that can be fixed before closing\n- DSCR below minimum\n- Missing appraisal or outdated appraisal\n\nWhen in doubt, classify as a WARNING, not critical.\nMost deals should have 0-2 critical violations maximum.\n\nRespond with ONLY valid JSON:\n{\"overall_status\": \"PASS or FAIL\", \"rules_checked\": number, \"rules_passed\": number, \"rules_failed\": number, \"details\": [{\"rule_id\": number, \"rule_name\": \"name\", \"status\": \"PASS or FAIL\", \"finding\": \"evidence\"}], \"critical_violations\": [\"only truly deal-blocking violations per the rules above\"], \"warnings\": [\"non-blocking concerns\"]}"
+      },
+      "id": "1fc0db9c-be9a-4c48-8424-d4cef7ab075d",
+      "name": "Compliance Agent",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.4,
+      "position": [
+        672,
+        224
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "var item = $input.first().json;\nvar raw = item.response || item.output || item.text || '';\nif (typeof raw === 'object') raw = JSON.stringify(raw);\nvar compliance = {};\ntry {\n  var m = raw.match(/```(?:json)?\\s*([\\s\\S]*?)```/);\n  var js = m ? m[1].trim() : raw.substring(raw.indexOf('{'), raw.lastIndexOf('}') + 1);\n  compliance = JSON.parse(js);\n} catch(e) {\n  compliance = { overall_status: 'UNKNOWN', parse_error: true };\n}\nvar hasCritical = compliance.critical_violations && compliance.critical_violations.length > 0;\nreturn [{ json: { compliance_result: compliance, has_critical_violations: hasCritical } }];"
+      },
+      "id": "18299540-3bf5-43c7-8432-89c5ef32ef3a",
+      "name": "Parse Compliance",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        944,
+        224
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cv",
+              "leftValue": "={{ $json.has_critical_violations }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "444d7c32-2ba6-4c4a-9ae5-59ecd7205536",
+      "name": "Critical Violations?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1120,
+        224
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "var compliance = $('Parse Compliance').item.json.compliance_result;\nvar extracted = $('Parse Extraction').item.json.extracted_terms;\nvar output = '== DEAL REJECTED â€” CRITICAL COMPLIANCE VIOLATIONS ==\\n\\n';\noutput += 'Deal Type: ' + (extracted.deal_type || 'Unknown') + '\\n';\noutput += 'Principal: ' + ((extracted.financial_terms && extracted.financial_terms.principal_amount) || 'N/A') + '\\n\\n';\noutput += 'CRITICAL VIOLATIONS:\\n';\nif (compliance.critical_violations) {\n  for (var i = 0; i < compliance.critical_violations.length; i++) {\n    output += '  !! ' + compliance.critical_violations[i] + '\\n';\n  }\n}\nif (compliance.warnings && compliance.warnings.length > 0) {\n  output += '\\nADDITIONAL WARNINGS:\\n';\n  for (var w = 0; w < compliance.warnings.length; w++) {\n    output += '  >> ' + compliance.warnings[w] + '\\n';\n  }\n}\noutput += '\\nThis deal was fast-tracked to REJECT without risk assessment due to critical compliance failures.';\nreturn [{ json: { output: output, decision: 'REJECT', risk_score: 10, risk_level: 'CRITICAL', deal_type: extracted.deal_type || 'Unknown', summary: 'Rejected due to critical compliance violations' } }];"
+      },
+      "id": "70feb7d3-3a51-46c2-95dc-6b21b4f64592",
+      "name": "Fast-Track Reject",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2208,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1CWIhiv0g2PMBXlQthDNkXWd8SL7rTagxd1cZLA-drac",
+          "mode": "list",
+          "cachedResultName": "Workflow 2: Compliance",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1CWIhiv0g2PMBXlQthDNkXWd8SL7rTagxd1cZLA-drac/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 551274306,
+          "mode": "list",
+          "cachedResultName": "History",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1CWIhiv0g2PMBXlQthDNkXWd8SL7rTagxd1cZLA-drac/edit#gid=551274306"
+        },
+        "options": {}
+      },
+      "id": "e23a793f-a5ac-439a-9e92-a013c2ab0216",
+      "name": "Read Historical Deals",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        1344,
+        320
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "3MBIAJcPbV6MWj0p",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "var items = $input.all();\nvar history = '';\nif (items.length > 0 && items[0].json && Object.keys(items[0].json).length > 1) {\n  var recent = items.slice(-10);\n  history = recent.map(function(item, i) {\n    var d = item.json;\n    return 'Past Deal ' + (i+1) + ': Type=' + (d['Deal Type'] || 'Unknown') + ', Decision=' + (d['Decision'] || '?') + ', Risk=' + (d['Risk Score'] || '?') + '/10, Notes=' + (d['Summary'] || 'none');\n  }).join('\\n');\n} else {\n  history = 'No historical deals on record yet.';\n}\nvar extracted = {}; var compliance = {};\ntry { extracted = $('Parse Extraction').item.json.extracted_terms; } catch(e) {}\ntry { compliance = $('Parse Compliance').item.json.compliance_result; } catch(e) {}\nreturn [{ json: { history: history, extracted_terms: extracted, compliance_result: compliance } }];"
+      },
+      "id": "dd585195-7cc0-4527-b25e-dec74ca5943b",
+      "name": "Assemble Risk",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1568,
+        320
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "cef3c06a-083a-48d0-9d38-f7564fce6d2b",
+      "name": "Wait 3",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1776,
+        320
+      ],
+      "webhookId": "88da50fd-1d0b-4ac0-afc3-cc26368f2210"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are a risk analyst. Score this deal 1-10.\n\nTERMS:\n{{ JSON.stringify($('Assemble Risk').item.json.extracted_terms, null, 2) }}\n\nCOMPLIANCE:\n{{ JSON.stringify($('Assemble Risk').item.json.compliance_result, null, 2) }}\n\nHISTORICAL DEALS:\n{{ $('Assemble Risk').item.json.history }}\n\nDimensions: credit, collateral, market, compliance, concentration, documentation.\n\nRespond with ONLY valid JSON:\n{\"risk_score\": number, \"risk_level\": \"LOW or MEDIUM or HIGH\", \"dimensions\": [{\"name\": \"dim\", \"score\": number, \"assessment\": \"why\"}], \"red_flags\": [\"flags\"], \"mitigating_factors\": [\"positives\"], \"historical_comparison\": \"comparison\", \"summary\": \"2-3 sentences\", \"recommendation\": \"APPROVE or ESCALATE or REJECT\"}"
+      },
+      "id": "956c7186-7c21-40d1-ae6f-9ec5e9be6ab8",
+      "name": "Risk Agent",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.4,
+      "position": [
+        1984,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-3.1-flash-lite-preview",
+        "options": {
+          "temperature": 0.2
+        }
+      },
+      "id": "03225eca-875c-45e6-9f4d-40b2fa021a48",
+      "name": "Gemini Risk",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        1984,
+        512
+      ],
+      "credentials": {
+        "googlePalmApi": {
+          "id": "0Zk0atMWf4o785oK",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "var item = $input.first().json;\nvar raw = item.response || item.output || item.text || '';\nif (typeof raw === 'object') raw = JSON.stringify(raw);\nvar risk = {};\ntry {\n  var m = raw.match(/```(?:json)?\\s*([\\s\\S]*?)```/);\n  var js = m ? m[1].trim() : raw.substring(raw.indexOf('{'), raw.lastIndexOf('}') + 1);\n  risk = JSON.parse(js);\n} catch(e) {\n  risk = { risk_score: 10, risk_level: 'HIGH', summary: 'Parse error', recommendation: 'ESCALATE' };\n}\nreturn [{ json: { risk_result: risk } }];"
+      },
+      "id": "385a4524-cf89-433c-bbed-fc3cfe91847e",
+      "name": "Parse Risk",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2208,
+        320
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "eb2416a7-de91-4f40-8236-96c2adb2ebbb",
+      "name": "Wait 4",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        2416,
+        320
+      ],
+      "webhookId": "a2c4931a-f687-450c-ac16-4bae1d912925"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Quality check. Are all outputs complete and consistent?\n\nEXTRACTION:\n{{ JSON.stringify($('Parse Extraction').item.json.extracted_terms, null, 2) }}\n\nCOMPLIANCE:\n{{ JSON.stringify($('Parse Compliance').item.json.compliance_result, null, 2) }}\n\nRISK:\n{{ JSON.stringify($('Parse Risk').item.json.risk_result, null, 2) }}\n\nCheck: all terms extracted? All rules checked? Risk consistent with compliance? Contradictions?\n\nRespond with ONLY valid JSON:\n{\"verdict\": \"PASS or FAIL\", \"completeness\": number 1-10, \"gaps\": [\"missing items\"], \"contradictions\": [\"issues\"], \"notes\": \"summary\"}"
+      },
+      "id": "41606cab-2751-4970-8da6-cbcbc5e527ec",
+      "name": "Quality Gate",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.4,
+      "position": [
+        2624,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-3.1-flash-lite-preview",
+        "options": {
+          "temperature": 0.1
+        }
+      },
+      "id": "2168d8fe-5e46-48bd-bd79-44e753f754c9",
+      "name": "Gemini Quality",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        2624,
+        512
+      ],
+      "credentials": {
+        "googlePalmApi": {
+          "id": "0Zk0atMWf4o785oK",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "var item = $input.first().json;\nvar raw = item.response || item.output || item.text || '';\nif (typeof raw === 'object') raw = JSON.stringify(raw);\nvar quality = {};\ntry {\n  var m = raw.match(/```(?:json)?\\s*([\\s\\S]*?)```/);\n  var js = m ? m[1].trim() : raw.substring(raw.indexOf('{'), raw.lastIndexOf('}') + 1);\n  quality = JSON.parse(js);\n} catch(e) {\n  quality = { verdict: 'PASS', completeness: 7, notes: 'Parse error on quality check' };\n}\nvar passed = (quality.verdict === 'PASS');\nreturn [{ json: { quality: quality, quality_passed: passed } }];"
+      },
+      "id": "22487e80-9056-4dd6-a5b0-abc1493ca5e0",
+      "name": "Parse Quality",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2880,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "id": "qp",
+              "leftValue": "={{ $json.quality_passed }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and",
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          }
+        },
+        "options": {}
+      },
+      "id": "adaa5c8c-9fb0-4a5b-8ce5-d7c4000ddca3",
+      "name": "Quality Passed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3040,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "var extracted = $('Parse Extraction').item.json.extracted_terms;\nvar compliance = $('Parse Compliance').item.json.compliance_result;\nvar risk = $('Parse Risk').item.json.risk_result;\nvar quality = $('Parse Quality').item.json.quality;\nvar researchNotes = '';\ntry {\n  var researched = $('Parse Re-Research').item.json;\n  if (researched.extracted_terms) extracted = researched.extracted_terms;\n  if (researched.compliance_result) compliance = researched.compliance_result;\n  if (researched.risk_result) risk = researched.risk_result;\n  if (researched.research_notes) researchNotes = researched.research_notes;\n} catch(e) {}\ntry {\n  var retryQuality = $('Parse Retry Quality').item.json.quality;\n  if (retryQuality) quality = retryQuality;\n} catch(e) {}\n\nvar riskScore = parseInt(risk.risk_score) || 10;\nvar riskLevel = riskScore <= 3 ? 'LOW' : riskScore <= 6 ? 'MEDIUM' : 'HIGH';\nvar decision = 'ESCALATE';\nif (riskLevel === 'LOW' && compliance.overall_status === 'PASS') decision = 'APPROVE';\nelse if (riskLevel === 'HIGH') decision = 'REJECT';\n\nvar d = '=';\nvar div = '\\n' + d.repeat(50) + '\\n';\nvar out = d.repeat(50) + '\\n  DEAL REVIEW REPORT\\n  ID: DR-' + Date.now() + '\\n  Date: ' + new Date().toLocaleDateString('en-US', {month:'long',day:'numeric',year:'numeric'}) + '\\n' + d.repeat(50);\nout += div + 'DECISION: ' + decision + '\\nRisk: ' + riskScore + '/10 (' + riskLevel + ')\\nCompliance: ' + (compliance.overall_status || '?') + ' (' + (compliance.rules_passed||'?') + '/' + (compliance.rules_checked||'?') + ' passed)\\nQuality: ' + (quality.verdict||'?') + ' (' + (quality.completeness||'?') + '/10)';\nif (researchNotes) out += '\\nRe-research: ' + researchNotes;\nout += div + 'DEAL SUMMARY\\nType: ' + (extracted.deal_type||'?') + '\\nPrincipal: ' + ((extracted.financial_terms&&extracted.financial_terms.principal_amount)||'N/A') + '\\nRate: ' + ((extracted.financial_terms&&extracted.financial_terms.interest_rate)||'N/A') + '\\nMaturity: ' + ((extracted.financial_terms&&extracted.financial_terms.maturity_date)||'N/A') + '\\nLTV: ' + ((extracted.financial_terms&&extracted.financial_terms.ltv_ratio)||'N/A');\nif (compliance.details && compliance.details.length > 0) { out += div + 'COMPLIANCE'; for (var i=0;i<compliance.details.length;i++) { var r=compliance.details[i]; out += '\\n  [' + r.status + '] ' + (r.rule_name||'Rule '+r.rule_id) + ': ' + (r.finding||''); } }\nif (compliance.critical_violations && compliance.critical_violations.length > 0) { out += div + 'CRITICAL'; for (var cv=0;cv<compliance.critical_violations.length;cv++) out += '\\n  !! ' + compliance.critical_violations[cv]; }\nif (compliance.warnings && compliance.warnings.length > 0) { out += div + 'WARNINGS'; for (var w=0;w<compliance.warnings.length;w++) out += '\\n  >> ' + compliance.warnings[w]; }\nif (risk.dimensions && risk.dimensions.length > 0) { out += div + 'RISK DIMENSIONS'; for (var rd=0;rd<risk.dimensions.length;rd++) { var dm=risk.dimensions[rd]; out += '\\n  ' + dm.name + ': ' + dm.score + '/10 - ' + dm.assessment; } }\nif (risk.red_flags && risk.red_flags.length > 0) { out += div + 'RED FLAGS'; for (var rf=0;rf<risk.red_flags.length;rf++) out += '\\n  ** ' + risk.red_flags[rf]; }\nif (risk.mitigating_factors && risk.mitigating_factors.length > 0) { out += div + 'MITIGATING'; for (var mf=0;mf<risk.mitigating_factors.length;mf++) out += '\\n  ++ ' + risk.mitigating_factors[mf]; }\nif (risk.summary) out += div + 'RISK SUMMARY\\n' + risk.summary;\nif (risk.historical_comparison) out += div + 'HISTORICAL\\n' + risk.historical_comparison;\nif (quality.gaps && quality.gaps.length > 0) { out += div + 'QUALITY GAPS'; for (var qg=0;qg<quality.gaps.length;qg++) out += '\\n  -- ' + quality.gaps[qg]; }\nout += div + 'RECOMMENDATION: ' + (risk.recommendation || decision) + '\\n' + d.repeat(50);\n\nreturn [{ json: { output: out, decision: decision, risk_score: riskScore, risk_level: riskLevel, deal_type: extracted.deal_type || 'Unknown', summary: risk.summary || '' } }];"
+      },
+      "id": "59c9dcd0-c613-44d7-b1f7-81b071073ce6",
+      "name": "Assemble Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3264,
+        224
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "id": "ap",
+              "leftValue": "={{ $json.decision }}",
+              "rightValue": "APPROVE",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and",
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          }
+        },
+        "options": {}
+      },
+      "id": "844a7360-0786-4e56-9064-c398a5dae4d9",
+      "name": "Decision Router",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3520,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "id": "es",
+              "leftValue": "={{ $json.decision }}",
+              "rightValue": "ESCALATE",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and",
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          }
+        },
+        "options": {}
+      },
+      "id": "82828bdd-8079-42f4-84f5-5cb3a3f53caa",
+      "name": "Escalate or Reject",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3504,
+        512
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "var r = $input.first().json;\nreturn [{ json: { output: 'APPROVED\\n\\n' + r.output, decision: r.decision, risk_score: r.risk_score, deal_type: r.deal_type, summary: r.summary } }];"
+      },
+      "id": "43813554-7160-454d-be03-96868240c56a",
+      "name": "Approve Path",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3808,
+        128
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "var r = $input.first().json;\nvar prompt = 'ESCALATED - Needs your decision\\n\\nPlease reply in chat with one of: APPROVE, REJECT, REQUEST CHANGES, or MORE INFO.\\n\\n';\nreturn [{ json: { output: prompt + r.output, decision: r.decision, risk_score: r.risk_score, deal_type: r.deal_type, summary: r.summary, needs_human_review: true } }];"
+      },
+      "id": "f19863bd-5562-4a52-94a7-69d4ef395d04",
+      "name": "Escalate Path",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3760,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "var r = $input.first().json;\nreturn [{ json: { output: 'REJECTED\\n\\n' + r.output, decision: r.decision, risk_score: r.risk_score, deal_type: r.deal_type, summary: r.summary } }];"
+      },
+      "id": "c99bddbd-8fe0-42c1-883e-767ff29719ae",
+      "name": "Reject Path",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3760,
+        512
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "var data = $input.first().json;\nreturn [{ json: data }];"
+      },
+      "id": "57f258c5-8e09-4012-9d9e-1637c503570e",
+      "name": "Merge Outcomes",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4032,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1CWIhiv0g2PMBXlQthDNkXWd8SL7rTagxd1cZLA-drac",
+          "mode": "list",
+          "cachedResultName": "Workflow 2: Compliance",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1CWIhiv0g2PMBXlQthDNkXWd8SL7rTagxd1cZLA-drac/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 551274306,
+          "mode": "list",
+          "cachedResultName": "History",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1CWIhiv0g2PMBXlQthDNkXWd8SL7rTagxd1cZLA-drac/edit#gid=551274306"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "summary": "={{ $json.summary }}",
+            "deal_type": "={{ $json.deal_type }}",
+            "risk_level": "={{ $json.risk_level }}",
+            "risk_score": "={{ $json.risk_score }}",
+            "decision": "={{ $json.decision }}",
+            "output": "={{ $json.output }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "output",
+              "displayName": "output",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "decision",
+              "displayName": "decision",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "risk_score",
+              "displayName": "risk_score",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "risk_level",
+              "displayName": "risk_level",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "deal_type",
+              "displayName": "deal_type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "summary",
+              "displayName": "summary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "38d5b773-10cd-4150-8d2d-209069575d48",
+      "name": "Store to History",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        4256,
+        320
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "3MBIAJcPbV6MWj0p",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "var quality = {};\ntry { quality = $('Parse Retry Quality').item.json.quality || {}; } catch(e) { quality = $('Parse Quality').item.json.quality || {}; }\nvar gaps = quality.gaps && quality.gaps.length ? quality.gaps.join('\\n- ') : 'No specific gaps provided.';\nvar contradictions = quality.contradictions && quality.contradictions.length ? quality.contradictions.join('\\n- ') : 'None listed.';\nvar output = 'ESCALATED - Quality review needs your decision\\n\\nThe automated quality gate did not pass after the single bounded re-research attempt, so I stopped to avoid a forever loop.\\n\\nPlease reply in chat with one of: APPROVE AS-IS, REQUEST CHANGES, MORE INFO, or REJECT.\\n\\nQuality notes: ' + (quality.notes || 'No notes provided.') + '\\n\\nGaps:\\n- ' + gaps + '\\n\\nContradictions:\\n- ' + contradictions;\nreturn [{ json: { output: output, decision: 'ESCALATE', risk_score: null, risk_level: 'UNKNOWN', deal_type: 'Unknown', summary: 'Quality gate failed after bounded re-research; human review requested', needs_human_review: true, quality: quality } }];"
+      },
+      "id": "3c0a27b3-99c5-4fe6-b11d-2ca7da4f3384",
+      "name": "Human Review Needed",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3264,
+        512
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "var r = $('Merge Outcomes').item.json;\nreturn [{ json: { output: r.output, decision: r.decision, risk_score: r.risk_score, deal_type: r.deal_type, summary: r.summary, needs_human_review: !!r.needs_human_review } }];"
+      },
+      "id": "48c56a26-159e-4d9a-a3c7-fb3d94b50117",
+      "name": "Return to Chat",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4480,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "model": "openai/gpt-oss-120b",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [
+        -688,
+        432
+      ],
+      "id": "6b1f34ea-7c81-4f63-a8c9-265f39e65be4",
+      "name": "Groq Chat Model",
+      "credentials": {
+        "groqApi": {
+          "id": "aIYaQJU1ehbAExQk",
+          "name": "Groq account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "openai/gpt-oss-20b",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [
+        608,
+        432
+      ],
+      "id": "07bcf682-5db1-4c10-9d0d-6dd3c44df4ef",
+      "name": "Groq Chat Model1",
+      "credentials": {
+        "groqApi": {
+          "id": "aIYaQJU1ehbAExQk",
+          "name": "Groq account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are the bounded re-research agent for a deal review workflow. This is the ONLY automated re-research attempt before human review.\n\nORIGINAL DOCUMENT:\n{{ $('Parse Input').item.json.deal_text }}\n\nINITIAL EXTRACTION:\n{{ JSON.stringify($('Parse Extraction').item.json.extracted_terms, null, 2) }}\n\nINITIAL COMPLIANCE:\n{{ JSON.stringify($('Parse Compliance').item.json.compliance_result, null, 2) }}\n\nINITIAL RISK:\n{{ JSON.stringify($('Parse Risk').item.json.risk_result, null, 2) }}\n\nQUALITY GATE FAILURE:\n{{ JSON.stringify($('Parse Quality').item.json.quality, null, 2) }}\n\nAVAILABLE RULES:\n{{ $('Assemble Compliance').item.json.rules }}\n\nHISTORICAL CONTEXT:\n{{ $('Assemble Risk').item.json.history }}\n\nRe-read the document and resolve the listed gaps or contradictions. Do not invent facts. If a gap cannot be resolved from the document/rules/history, preserve it as a warning or red flag and explain that it needs human evidence.\n\nReturn ONLY valid JSON:\n{\"retry_attempt\": 1, \"max_retry_attempts\": 1, \"extracted_terms\": {\"deal_type\": \"Loan or Insurance or Investment or Other\", \"parties\": {\"primary\": \"name and role\", \"counterparty\": \"name and role\", \"guarantors\": \"names or None\"}, \"financial_terms\": {\"principal_amount\": \"amount\", \"interest_rate\": \"rate and type\", \"maturity_date\": \"date\", \"ltv_ratio\": \"ratio or N/A\", \"fees\": \"all fees\"}, \"collateral\": {\"description\": \"details or None\", \"appraised_value\": \"value or N/A\"}, \"covenants\": [\"each covenant\"], \"termination\": {\"early_termination_fee\": \"details\", \"conditions\": \"conditions\"}, \"governing_law\": \"jurisdiction\", \"red_flags\": [\"concerns\"]}, \"compliance_result\": {\"overall_status\": \"PASS or FAIL\", \"rules_checked\": number, \"rules_passed\": number, \"rules_failed\": number, \"details\": [{\"rule_id\": number, \"rule_name\": \"name\", \"status\": \"PASS or FAIL\", \"finding\": \"evidence\"}], \"critical_violations\": [\"deal-blocking violations only\"], \"warnings\": [\"non-blocking concerns\"]}, \"risk_result\": {\"risk_score\": number, \"risk_level\": \"LOW or MEDIUM or HIGH\", \"dimensions\": [{\"name\": \"dim\", \"score\": number, \"assessment\": \"why\"}], \"red_flags\": [\"flags\"], \"mitigating_factors\": [\"positives\"], \"historical_comparison\": \"comparison\", \"summary\": \"2-3 sentences\", \"recommendation\": \"APPROVE or ESCALATE or REJECT\"}, \"research_notes\": \"what changed and what remains unresolved\"}"
+      },
+      "id": "9a425b08-6dc7-4a7d-90fb-8ca40d0e6a01",
+      "name": "Re-Research Agent",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.4,
+      "position": [
+        3264,
+        512
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "var item = $input.first().json;\nvar raw = item.response || item.output || item.text || '';\nif (typeof raw === 'object') raw = JSON.stringify(raw);\nvar researched = {};\ntry {\n  var m = raw.match(/```(?:json)?\\s*([\\s\\S]*?)```/);\n  var js = m ? m[1].trim() : raw.substring(raw.indexOf('{'), raw.lastIndexOf('}') + 1);\n  researched = JSON.parse(js);\n} catch(e) {\n  researched = {\n    retry_attempt: 1,\n    max_retry_attempts: 1,\n    parse_error: true,\n    extracted_terms: $('Parse Extraction').item.json.extracted_terms,\n    compliance_result: $('Parse Compliance').item.json.compliance_result,\n    risk_result: $('Parse Risk').item.json.risk_result,\n    research_notes: 'Re-research response could not be parsed; using original agent outputs.'\n  };\n}\nresearched.retry_attempt = researched.retry_attempt || 1;\nresearched.max_retry_attempts = researched.max_retry_attempts || 1;\nreturn [{ json: researched }];"
+      },
+      "id": "c4955e66-861f-4026-8026-edee3aeedbe0",
+      "name": "Parse Re-Research",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3520,
+        512
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Final quality check after the single bounded re-research attempt.\n\nRE-RESEARCH ATTEMPT:\n{{ $('Parse Re-Research').item.json.retry_attempt }} of {{ $('Parse Re-Research').item.json.max_retry_attempts }}\n\nUPDATED EXTRACTION:\n{{ JSON.stringify($('Parse Re-Research').item.json.extracted_terms, null, 2) }}\n\nUPDATED COMPLIANCE:\n{{ JSON.stringify($('Parse Re-Research').item.json.compliance_result, null, 2) }}\n\nUPDATED RISK:\n{{ JSON.stringify($('Parse Re-Research').item.json.risk_result, null, 2) }}\n\nRESEARCH NOTES:\n{{ $('Parse Re-Research').item.json.research_notes }}\n\nCheck: all terms extracted? All rules checked? Risk consistent with compliance? Contradictions? If unresolved gaps remain but are explicitly called out for human evidence, classify them as warnings unless they make the output unusable.\n\nRespond with ONLY valid JSON:\n{\"verdict\": \"PASS or FAIL\", \"completeness\": number 1-10, \"gaps\": [\"missing items\"], \"contradictions\": [\"issues\"], \"notes\": \"summary\", \"retry_attempt\": 1, \"max_retry_attempts\": 1}"
+      },
+      "id": "a6e09a71-ef47-46de-9515-3b4e65a13296",
+      "name": "Retry Quality Gate",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.4,
+      "position": [
+        3760,
+        512
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "var item = $input.first().json;\nvar raw = item.response || item.output || item.text || '';\nif (typeof raw === 'object') raw = JSON.stringify(raw);\nvar quality = {};\ntry {\n  var m = raw.match(/```(?:json)?\\s*([\\s\\S]*?)```/);\n  var js = m ? m[1].trim() : raw.substring(raw.indexOf('{'), raw.lastIndexOf('}') + 1);\n  quality = JSON.parse(js);\n} catch(e) {\n  quality = { verdict: 'FAIL', completeness: 0, notes: 'Parse error on retry quality check', retry_attempt: 1, max_retry_attempts: 1 };\n}\nquality.retry_attempt = quality.retry_attempt || 1;\nquality.max_retry_attempts = quality.max_retry_attempts || 1;\nvar passed = (quality.verdict === 'PASS');\nreturn [{ json: { quality: quality, quality_passed: passed, retry_attempt: quality.retry_attempt, max_retry_attempts: quality.max_retry_attempts } }];"
+      },
+      "id": "df22b0e1-643b-427b-a44a-79de32de9e2c",
+      "name": "Parse Retry Quality",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4016,
+        512
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "id": "rqp",
+              "leftValue": "={{ $json.quality_passed }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and",
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          }
+        },
+        "options": {}
+      },
+      "id": "0f59e5e2-834d-4f59-b08c-8bc8b89b7b8a",
+      "name": "Retry Quality Passed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        4256,
+        512
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Chat Trigger": {
+      "main": [
+        [
+          {
+            "node": "Parse Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Input": {
+      "main": [
+        [
+          {
+            "node": "Wait 1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 1": {
+      "main": [
+        [
+          {
+            "node": "Extractor Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extractor Agent": {
+      "main": [
+        [
+          {
+            "node": "Parse Extraction",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Extraction": {
+      "main": [
+        [
+          {
+            "node": "Is Loan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Loan": {
+      "main": [
+        [
+          {
+            "node": "Read Loan Rules",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Is Insurance",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Insurance": {
+      "main": [
+        [
+          {
+            "node": "Read Insurance Rules",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Read Investment Rules",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Loan Rules": {
+      "main": [
+        [
+          {
+            "node": "Assemble Compliance",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Insurance Rules": {
+      "main": [
+        [
+          {
+            "node": "Assemble Compliance",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Investment Rules": {
+      "main": [
+        [
+          {
+            "node": "Assemble Compliance",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Assemble Compliance": {
+      "main": [
+        [
+          {
+            "node": "Wait 2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 2": {
+      "main": [
+        [
+          {
+            "node": "Compliance Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compliance Agent": {
+      "main": [
+        [
+          {
+            "node": "Parse Compliance",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Compliance": {
+      "main": [
+        [
+          {
+            "node": "Critical Violations?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Critical Violations?": {
+      "main": [
+        [
+          {
+            "node": "Fast-Track Reject",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Read Historical Deals",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fast-Track Reject": {
+      "main": [
+        [
+          {
+            "node": "Merge Outcomes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Historical Deals": {
+      "main": [
+        [
+          {
+            "node": "Assemble Risk",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Assemble Risk": {
+      "main": [
+        [
+          {
+            "node": "Wait 3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 3": {
+      "main": [
+        [
+          {
+            "node": "Risk Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini Risk": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Risk Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Risk Agent": {
+      "main": [
+        [
+          {
+            "node": "Parse Risk",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Risk": {
+      "main": [
+        [
+          {
+            "node": "Wait 4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 4": {
+      "main": [
+        [
+          {
+            "node": "Quality Gate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini Quality": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Quality Gate",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "Re-Research Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "Retry Quality Gate",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Quality Gate": {
+      "main": [
+        [
+          {
+            "node": "Parse Quality",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Quality": {
+      "main": [
+        [
+          {
+            "node": "Quality Passed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Quality Passed?": {
+      "main": [
+        [
+          {
+            "node": "Assemble Report",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Re-Research Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Assemble Report": {
+      "main": [
+        [
+          {
+            "node": "Decision Router",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Decision Router": {
+      "main": [
+        [
+          {
+            "node": "Approve Path",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Escalate or Reject",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Escalate or Reject": {
+      "main": [
+        [
+          {
+            "node": "Escalate Path",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Reject Path",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Approve Path": {
+      "main": [
+        [
+          {
+            "node": "Merge Outcomes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Escalate Path": {
+      "main": [
+        [
+          {
+            "node": "Merge Outcomes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reject Path": {
+      "main": [
+        [
+          {
+            "node": "Merge Outcomes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Outcomes": {
+      "main": [
+        [
+          {
+            "node": "Store to History",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Human Review Needed": {
+      "main": [
+        [
+          {
+            "node": "Merge Outcomes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store to History": {
+      "main": [
+        [
+          {
+            "node": "Return to Chat",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Extractor Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Compliance Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Re-Research Agent": {
+      "main": [
+        [
+          {
+            "node": "Parse Re-Research",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Re-Research": {
+      "main": [
+        [
+          {
+            "node": "Retry Quality Gate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Retry Quality Gate": {
+      "main": [
+        [
+          {
+            "node": "Parse Retry Quality",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Retry Quality Passed?": {
+      "main": [
+        [
+          {
+            "node": "Assemble Report",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Human Review Needed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Retry Quality": {
+      "main": [
+        [
+          {
+            "node": "Retry Quality Passed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "2b2c5951-ea89-461d-8d75-89270a42f67f",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "2f84799f377210bb373f61a59440873fec4ae3f3cea60e8a19fd0955faa44541"
+  },
+  "id": "ctDbpLJmxU6XR85Y",
+  "tags": [
+    {
+      "updatedAt": "2026-05-12T08:59:29.296Z",
+      "createdAt": "2026-05-12T08:59:29.296Z",
+      "id": "806d0Gw5p6E3vFAE",
+      "name": "Routed"
+    },
+    {
+      "updatedAt": "2026-05-12T08:59:29.320Z",
+      "createdAt": "2026-05-12T08:59:29.320Z",
+      "id": "V2B8IkTxutxxO6V2",
+      "name": "Multi-Agent"
+    },
+    {
+      "updatedAt": "2026-05-12T08:59:29.265Z",
+      "createdAt": "2026-05-12T08:59:29.265Z",
+      "id": "Vd5Ymza1wruyeigo",
+      "name": "Complete"
+    },
+    {
+      "updatedAt": "2026-05-12T08:59:29.317Z",
+      "createdAt": "2026-05-12T08:59:29.317Z",
+      "id": "i9lbMKrnT6HUp9FG",
+      "name": "Deal Review"
+    },
+    {
+      "name": "Bounded Re-Research"
+    }
+  ]
+}
