@@ -1,0 +1,384 @@
+{
+  "name": "2D - Customer Support with Hybrid Search + Escalation",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "support-query",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "cea05577-2bfe-4b9f-a376-e35cbb84dc7b",
+      "name": "POST /support-query",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -1200,
+        192
+      ],
+      "webhookId": "32b5da5c-8dd8-4728-9f50-60d0eff5e8a1"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://127.0.0.1:8000/embed",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ text: $json.body.query }) }}",
+        "options": {}
+      },
+      "id": "ce732107-e85d-466a-90ad-8554ff9f655b",
+      "name": "Embed Query",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -960,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://product-enquiry-11pu6wl.svc.aped-4627-b74a.pinecone.io/query",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Api-Key",
+              "value": "pcsk_3K6er2_9Q4ZToXkGpvoArYqCsM2xmfGqYTMctXoYLqah3LjFcu7yX2sAUsL9qEr4EFH72G"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ vector: $json.embedding, topK: 10, includeMetadata: true }) }}",
+        "options": {}
+      },
+      "id": "68f0c329-42d9-4893-81e6-2616dfa0e4b1",
+      "name": "Pinecone - Semantic Search",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -720,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const query = $('POST /support-query').first().json.body.query;\nconst customerId = $('POST /support-query').first().json.body.customer_id || 'anonymous';\nconst matches = $input.first().json.matches || [];\n\n// BM25-simplified keyword scoring\nfunction keywordScore(text, queryTerms) {\n  if (!text) return 0;\n  const lowerText = text.toLowerCase();\n  const lowerQuery = queryTerms.map(t => t.toLowerCase());\n  let hits = 0;\n  for (const term of lowerQuery) {\n    if (lowerQuery.length <= 2) continue; // skip stopwords\n    if (lowerText.includes(term)) hits++;\n  }\n  return Math.min(hits / Math.max(lowerQuery.length, 1), 1.0);\n}\n\nconst queryTerms = query.split(/\\s+/).filter(t => t.length > 3);\n\nconst SEMANTIC_WEIGHT = 0.6;\nconst KEYWORD_WEIGHT = 0.4;\nconst CONFIDENCE_THRESHOLD = 0.45;\n\nconst scoredDocs = matches.map(m => {\n  const semanticScore = m.score || 0;\n  const docText = `${m.metadata.title || ''} ${m.metadata.content || m.metadata.text || ''}`.trim();\n  const kwScore = keywordScore(docText, queryTerms);\n  const hybridScore = (SEMANTIC_WEIGHT * semanticScore) + (KEYWORD_WEIGHT * kwScore);\n\n  return {\n    id: m.id,\n    title: m.metadata.title || m.id,\n    content: m.metadata.content || m.metadata.text || '',\n    category: m.metadata.category || 'general',\n    semanticScore: parseFloat(semanticScore.toFixed(4)),\n    keywordScore: parseFloat(kwScore.toFixed(4)),\n    hybridScore: parseFloat(hybridScore.toFixed(4))\n  };\n}).sort((a, b) => b.hybridScore - a.hybridScore);\n\nconst topDoc = scoredDocs[0] || null;\nconst confidence = topDoc ? topDoc.hybridScore : 0;\nconst canAutoResolve = confidence >= CONFIDENCE_THRESHOLD;\n\nconst topDocs = scoredDocs.slice(0, 3);\n\nreturn [{\n  json: {\n    query,\n    customerId,\n    scoredDocs,\n    topDocs,\n    topDoc,\n    confidence,\n    canAutoResolve,\n    confidenceThreshold: CONFIDENCE_THRESHOLD\n  }\n}];"
+      },
+      "id": "6f7e7964-70a0-40f6-b0ec-f32a2303bafd",
+      "name": "Hybrid Score + Confidence",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -480,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "condition-confidence",
+              "leftValue": "={{ $json.canAutoResolve }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "7c05b7a8-36d6-401f-8156-597b47043495",
+      "name": "Route by Confidence",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -240,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\n\nconst contextDocs = data.topDocs\n  .map((doc, i) => `[${i+1}] ${doc.title}\\n${doc.content.slice(0, 600)}${doc.content.length > 600 ? '...' : ''}`)\n  .join('\\n\\n');\n\nconst systemPrompt = `You are a helpful customer support assistant. Answer the customer's question accurately and concisely using only the provided knowledge base articles. If the articles don't fully answer the question, say so. Keep your answer under 200 words. End with a friendly closing.`;\n\nconst userMessage = `Customer question: ${data.query}\n\nRelevant knowledge base articles:\n${contextDocs}\n\nPlease answer based on the articles above.`;\n\nreturn [{\n  json: {\n    ...data,\n    answerMessages: [\n      { role: 'system', content: systemPrompt },\n      { role: 'user', content: userMessage }\n    ]\n  }\n}];"
+      },
+      "id": "f89593b5-33dd-4d87-8cec-b4a4aa099903",
+      "name": "Build Answer Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer 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"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ model: 'llama-3.3-70b-versatile', messages: $json.answerMessages, temperature: 0.2, max_tokens: 400 }) }}",
+        "options": {}
+      },
+      "id": "384c09d9-d33e-49f9-b33e-403d1c9a77d2",
+      "name": "Generate Support Answer",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        240,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const hybridData = $('Hybrid Score + Confidence').first().json;\nconst gptResponse = $input.first().json;\n\nconst answer = gptResponse.choices[0].message.content;\n\nreturn [{\n  json: {\n    success: true,\n    status: 'resolved',\n    customer_id: hybridData.customerId,\n    query: hybridData.query,\n    answer,\n    metadata: {\n      confidence: hybridData.confidence,\n      threshold: hybridData.confidenceThreshold,\n      top_documents: hybridData.topDocs.map(d => ({\n        title: d.title,\n        category: d.category,\n        hybrid_score: d.hybridScore,\n        semantic_score: d.semanticScore,\n        keyword_score: d.keywordScore\n      }))\n    }\n  }\n}];"
+      },
+      "id": "e73c0879-8493-48f9-85dc-57c99c0c707f",
+      "name": "Format Resolved",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "42e39666-0677-46a3-bb99-ed79960eab1d",
+      "name": "Respond - Resolved",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        720,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\n\nconst ticketId = `TKT-${Date.now()}`;\n\nconst topCandidates = data.scoredDocs.slice(0, 5).map(d => ({\n  title: d.title,\n  category: d.category,\n  hybrid_score: d.hybridScore\n}));\n\nconst escalationPayload = {\n  ticket_id: ticketId,\n  customer_id: data.customerId,\n  query: data.query,\n  reason: `Low confidence (${data.confidence.toFixed(3)} < ${data.confidenceThreshold}) — could not find reliable answer`,\n  top_candidates: topCandidates,\n  priority: data.confidence < 0.4 ? 'high' : 'medium',\n  created_at: new Date().toISOString()\n};\n\n// In production: POST to your ticketing system (Zendesk, Freshdesk, etc.)\n// or send a Slack notification here\n\nreturn [{\n  json: {\n    escalationPayload,\n    ticketId,\n    customerId: data.customerId,\n    query: data.query,\n    confidence: data.confidence\n  }\n}];"
+      },
+      "id": "f9939cc7-8a3d-4b61-a30d-5e60bbfc41f5",
+      "name": "Escalate to Human",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        368
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\n\nreturn [{\n  json: {\n    success: true,\n    status: 'escalated',\n    customer_id: data.customerId,\n    query: data.query,\n    ticket_id: data.ticketId,\n    message: \"We couldn't find a confident answer to your question. A support agent has been notified and will respond within 2 business hours.\",\n    metadata: {\n      confidence: data.confidence,\n      threshold: 0.7,\n      priority: data.escalationPayload.priority,\n      top_candidates: data.escalationPayload.top_candidates\n    }\n  }\n}];"
+      },
+      "id": "5d62174d-5926-4743-8ce9-82f5185704e8",
+      "name": "Format Escalation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        368
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {
+          "responseCode": 202
+        }
+      },
+      "id": "b268702b-3646-4455-8a0a-66b26621afcb",
+      "name": "Respond - Escalated",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        480,
+        368
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "POST /support-query": {
+      "main": [
+        [
+          {
+            "node": "Embed Query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embed Query": {
+      "main": [
+        [
+          {
+            "node": "Pinecone - Semantic Search",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pinecone - Semantic Search": {
+      "main": [
+        [
+          {
+            "node": "Hybrid Score + Confidence",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hybrid Score + Confidence": {
+      "main": [
+        [
+          {
+            "node": "Route by Confidence",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Confidence": {
+      "main": [
+        [
+          {
+            "node": "Build Answer Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Escalate to Human",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Answer Prompt": {
+      "main": [
+        [
+          {
+            "node": "Generate Support Answer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Support Answer": {
+      "main": [
+        [
+          {
+            "node": "Format Resolved",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Resolved": {
+      "main": [
+        [
+          {
+            "node": "Respond - Resolved",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Escalate to Human": {
+      "main": [
+        [
+          {
+            "node": "Format Escalation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Escalation": {
+      "main": [
+        [
+          {
+            "node": "Respond - Escalated",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "7fe8364a-924c-49f1-b7d7-077064e6b9bb",
+  "meta": {
+    "instanceId": "2f84799f377210bb373f61a59440873fec4ae3f3cea60e8a19fd0955faa44541"
+  },
+  "id": "JB6Ah29Pwuj8GEtf",
+  "tags": [
+    {
+      "name": "Complete 2D",
+      "id": "lFlta9MMMcKHnYzA",
+      "updatedAt": "2026-05-21T15:13:16.730Z",
+      "createdAt": "2026-05-21T15:13:16.730Z"
+    }
+  ]
+}
