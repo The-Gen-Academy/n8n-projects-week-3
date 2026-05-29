@@ -1,0 +1,377 @@
+{
+  "name": "Org Knowledge Graph — Ingestion from Text",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "aed5562e-da62-4e76-ba68-d6256ec7c20d",
+      "name": "Start",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        1392,
+        -32
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Define text documents to process\nconst BASE = 'https://raw.githubusercontent.com/abhinav-genacademy/week-2-n8n/refs/heads/main/';\n\nconst docs = [\n  { \n    url: BASE + 'sample_meeting_notes.txt',\n    label: 'Q3 Engineering Meeting Notes',\n    type: 'meeting_notes'\n  },\n \n];\n\nreturn docs.map(d => ({ json: d }));"
+      },
+      "id": "3a272999-91c7-4886-9ecd-78fe55a33dd3",
+      "name": "Document Manifest",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1600,
+        -32
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.url }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "id": "9c61d0e0-b303-479c-8ed3-9648c0ae391f",
+      "name": "Fetch Text Document",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1824,
+        -32
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a1",
+              "name": "raw_text",
+              "value": "={{ $json }}",
+              "type": "string"
+            },
+            {
+              "id": "a2",
+              "name": "label",
+              "value": "={{ $('Document Manifest').item.json.label }}",
+              "type": "string"
+            },
+            {
+              "id": "a3",
+              "name": "type",
+              "value": "={{ $('Document Manifest').item.json.type }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "ac48805e-9491-4fca-b581-385eb0e696ac",
+      "name": "Set Text",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2032,
+        -32
+      ]
+    },
+    {
+      "parameters": {
+        "model": "llama-3.3-70b-versatile",
+        "options": {
+          "temperature": 0
+        }
+      },
+      "id": "70413509-1ab3-4e06-92d1-e6bce4dfc227",
+      "name": "Groq LLM",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [
+        2256,
+        96
+      ],
+      "credentials": {
+        "groqApi": {
+          "id": "aIYaQJU1ehbAExQk",
+          "name": "Groq account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.raw_text }}",
+        "messages": {
+          "messageValues": [
+            {
+              "message": "You are an expert at extracting structured information from unstructured text.  Extract the following entities and relationships from the text:  **Entities to extract:** - People: name, role, team (if mentioned) - Projects: name, description, status, tools used - Decisions: title, rationale, date, who approved it - Documents: title, content summary, type, author  **Relationships to extract:** - Who worked on which projects - Who approved which decisions - Which documents relate to which projects/decisions - Which tools were used in which projects  CRITICAL: You MUST return ONLY valid JSON. Do not include any explanatory text, summaries, or markdown.  Return this exact JSON structure: {   \"people\": [{\"id\": \"p001\", \"name\": \"Sarah Chen\", \"role\": \"VP Engineering\", \"team\": \"Engineering\"}],   \"projects\": [{\"id\": \"pr001\", \"name\": \"Auth System Rebuild\", \"description\": \"Migration to OAuth 2.0\", \"status\": \"in_progress\", \"tools\": [\"Auth0\", \"Vault\"], \"contributors\": [\"p001\"]}],   \"decisions\": [{\"id\": \"d001\", \"title\": \"Adopt OAuth 2.0 with PKCE\", \"rationale\": \"Better mobile support...\", \"date\": \"2024-08-15\", \"approved_by\": \"p001\", \"project_id\": \"pr001\"}],   \"documents\": [{\"id\": \"doc001\", \"title\": \"Meeting Notes\", \"content\": \"Summary...\", \"type\": \"meeting_notes\", \"author_id\": \"p001\"}] }  Generate unique IDs (p001, p002, pr001, pr002, d001, d002, doc001, doc002) for each entity. If information is not present, use empty arrays []. Return ONLY the JSON object, nothing else."
+            }
+          ]
+        }
+      },
+      "id": "b4213143-585e-48d1-9ac2-6b3c9e6e99f0",
+      "name": "Extract Entities",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.4,
+      "position": [
+        2256,
+        -32
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nconst response = input.text || input.response || input.output || JSON.stringify(input);\n\n// Parse the LLM response\nlet extracted;\ntry {\n  // If response is already an object, use it directly\n  if (typeof response === 'object' && response !== null) {\n    extracted = response;\n  } else {\n    // Remove markdown code fences if present\n    const cleaned = String(response).replace(/```json\\n?|```\\n?/g, '').trim();\n    extracted = JSON.parse(cleaned);\n  }\n} catch (e) {\n  throw new Error('Failed to parse LLM response as JSON: ' + e.message + '\\nResponse: ' + JSON.stringify(response).slice(0, 500));\n}\n\n// Validate required fields\nif (!extracted.people) extracted.people = [];\nif (!extracted.projects) extracted.projects = [];\nif (!extracted.decisions) extracted.decisions = [];\nif (!extracted.documents) extracted.documents = [];\n\n// Add teams array (extract unique teams from people)\nconst teams = [...new Set(extracted.people.map(p => p.team).filter(Boolean))];\nextracted.teams = teams;\n\nreturn [{ json: extracted }];\n"
+      },
+      "id": "a722914d-26c3-4590-91c1-36d1e9416b1e",
+      "name": "Parse Extracted Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2512,
+        -32
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\n\nconst schemaQueries = [\n  \"CREATE CONSTRAINT person_id IF NOT EXISTS FOR (n:Person) REQUIRE n.id IS UNIQUE\",\n  \"CREATE CONSTRAINT project_id IF NOT EXISTS FOR (n:Project) REQUIRE n.id IS UNIQUE\",\n  \"CREATE CONSTRAINT decision_id IF NOT EXISTS FOR (n:Decision) REQUIRE n.id IS UNIQUE\",\n  \"CREATE CONSTRAINT document_id IF NOT EXISTS FOR (n:Document) REQUIRE n.id IS UNIQUE\",\n  \"CREATE CONSTRAINT skill_name IF NOT EXISTS FOR (n:Skill) REQUIRE n.name IS UNIQUE\",\n  \"CREATE CONSTRAINT tool_name IF NOT EXISTS FOR (n:Tool) REQUIRE n.name IS UNIQUE\",\n  \"CREATE CONSTRAINT team_name IF NOT EXISTS FOR (n:Team) REQUIRE n.name IS UNIQUE\",\n  \"CREATE VECTOR INDEX doc_embeddings IF NOT EXISTS FOR (n:Document) ON n.embedding OPTIONS {indexConfig: {`vector.dimensions`: 384, `vector.similarity_function`: 'cosine'}}\",\n  \"CREATE VECTOR INDEX decision_embeddings IF NOT EXISTS FOR (n:Decision) ON n.embedding OPTIONS {indexConfig: {`vector.dimensions`: 384, `vector.similarity_function`: 'cosine'}}\"\n];\n\nconst dataQueries = [\n  {\n    query: \"UNWIND $teams AS t MERGE (:Team {name: t})\",\n    parameters: { teams: data.teams || [] }\n  },\n  {\n    query: `UNWIND $people AS p\n            MERGE (person:Person {id: p.id})\n            SET person.name = p.name, person.role = coalesce(p.role, ''), person.bio = coalesce(p.bio, '')\n            WITH person, p\n            OPTIONAL MATCH (t:Team {name: p.team})\n            FOREACH (_ IN CASE WHEN t IS NULL THEN [] ELSE [1] END | MERGE (person)-[:MEMBER_OF]->(t))`,\n    parameters: { people: data.people || [] }\n  },\n  {\n    query: `UNWIND $projects AS pr\n            MERGE (project:Project {id: pr.id})\n            SET project.name = pr.name, project.description = coalesce(pr.description, ''),\n                project.status = coalesce(pr.status, 'unknown')\n            FOREACH (tool IN coalesce(pr.tools, []) | MERGE (t:Tool {name: tool}) MERGE (project)-[:USED_TOOL]->(t))\n            FOREACH (cid IN coalesce(pr.contributors, []) | MERGE (cp:Person {id: cid}) MERGE (cp)-[:WORKED_ON]->(project))`,\n    parameters: { projects: data.projects || [] }\n  },\n  {\n    query: `UNWIND $decisions AS d\n            MERGE (dec:Decision {id: d.id})\n            SET dec.title = d.title, dec.rationale = coalesce(d.rationale, ''), \n                dec.date = coalesce(d.date, ''), dec.status = coalesce(d.status, 'unknown')\n            WITH dec, d\n            OPTIONAL MATCH (p:Person {id: d.approved_by})\n            FOREACH (_ IN CASE WHEN p IS NULL THEN [] ELSE [1] END | MERGE (p)-[:APPROVED]->(dec))\n            WITH dec, d\n            OPTIONAL MATCH (pr:Project {id: d.project_id})\n            FOREACH (_ IN CASE WHEN pr IS NULL THEN [] ELSE [1] END | MERGE (dec)-[:RELATES_TO]->(pr))`,\n    parameters: { decisions: data.decisions || [] }\n  },\n  {\n    query: `UNWIND $documents AS d\n            MERGE (doc:Document {id: d.id})\n            SET doc.title = d.title, doc.content = coalesce(d.content, ''), \n                doc.type = coalesce(d.type, 'document'), doc.created = coalesce(d.created, '')\n            WITH doc, d\n            OPTIONAL MATCH (p:Person {id: d.author_id})\n            FOREACH (_ IN CASE WHEN p IS NULL THEN [] ELSE [1] END | MERGE (p)-[:AUTHORED]->(doc))\n            WITH doc, d\n            OPTIONAL MATCH (dec:Decision {id: d.documents_decision})\n            FOREACH (_ IN CASE WHEN dec IS NULL THEN [] ELSE [1] END | MERGE (doc)-[:DOCUMENTS]->(dec))\n            WITH doc, d\n            OPTIONAL MATCH (pr:Project {id: d.documents_project})\n            FOREACH (_ IN CASE WHEN pr IS NULL THEN [] ELSE [1] END | MERGE (doc)-[:DOCUMENTS]->(pr))`,\n    parameters: { documents: data.documents || [] }\n  }\n];\n\nreturn [{ json: { schemaQueries, dataQueries } }];"
+      },
+      "id": "287ae589-28a6-45e8-9f0a-3bc2f238e2d2",
+      "name": "Prepare Neo4j Queries",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2704,
+        -32
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const { schemaQueries } = $input.first().json;\nreturn schemaQueries.map(q => ({ json: { query: q } }));"
+      },
+      "id": "87bc1b58-c764-4b3f-93f7-bb1c4c7aecb8",
+      "name": "Build Schema Items",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2912,
+        -32
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://127.0.0.1:7474/db/neo4j/tx/commit",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { statements: [{ statement: $json.query }] } }}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "c9b53adb-a820-4f80-8cb7-3084d542856a",
+      "name": "Run Schema",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3136,
+        -32
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "9u0fOta7bM4aOTO0",
+          "name": "Unnamed credential 4"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const dataQueries = $('Prepare Neo4j Queries').item.json.dataQueries;\nreturn dataQueries.map(q => ({ json: q }));"
+      },
+      "id": "82ed0fe1-089c-4a43-806e-9dcae260fad8",
+      "name": "Build Data Items",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3360,
+        -32
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://127.0.0.1:7474/db/neo4j/tx/commit",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { statements: [{ statement: $json.query, parameters: $json.parameters }] } }}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "3c3099db-db10-486c-b9e2-52e5d21ba26a",
+      "name": "Load Data",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3584,
+        -32
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "9u0fOta7bM4aOTO0",
+          "name": "Unnamed credential 4"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Start": {
+      "main": [
+        [
+          {
+            "node": "Document Manifest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Document Manifest": {
+      "main": [
+        [
+          {
+            "node": "Fetch Text Document",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Text Document": {
+      "main": [
+        [
+          {
+            "node": "Set Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Text": {
+      "main": [
+        [
+          {
+            "node": "Extract Entities",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq LLM": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Extract Entities",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Entities": {
+      "main": [
+        [
+          {
+            "node": "Parse Extracted Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Extracted Data": {
+      "main": [
+        [
+          {
+            "node": "Prepare Neo4j Queries",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Neo4j Queries": {
+      "main": [
+        [
+          {
+            "node": "Build Schema Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Schema Items": {
+      "main": [
+        [
+          {
+            "node": "Run Schema",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Schema": {
+      "main": [
+        [
+          {
+            "node": "Build Data Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Data Items": {
+      "main": [
+        [
+          {
+            "node": "Load Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "765f3c0d-4384-4d32-941a-a7539caed5bf",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "2f84799f377210bb373f61a59440873fec4ae3f3cea60e8a19fd0955faa44541"
+  },
+  "id": "pBmchsQc3rLK3rXl",
+  "tags": []
+}

@@ -1,0 +1,164 @@
+{
+  "name": "2A — Enterprise Policy Q&A Bot",
+  "nodes": [
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "93ec4135-cbce-477f-b157-894acceb5b54",
+      "name": "When chat message received",
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1,
+      "position": [
+        -64,
+        0
+      ],
+      "webhookId": "acme-policy-qa"
+    },
+    {
+      "parameters": {
+        "agent": "conversationalAgent",
+        "promptType": "define",
+        "text": "=You are the ACME Enterprise Policy Assistant. You have access to a knowledge base with four documents: HR Policy Manual, Compliance Manual, Product Documentation, and Onboarding Guide.\n\nIMPORTANT: Always use the search_acme_kb tool to search the knowledge base before answering. Never answer from memory alone.\n\nCite which document your answer comes from. If the answer is not in the knowledge base say so clearly.\n\nUser question: {{ $json.chatInput }}",
+        "options": {}
+      },
+      "id": "2bf975d3-e401-495f-8679-755a0c437da4",
+      "name": "AI Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.6,
+      "position": [
+        224,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "model": "llama-3.3-70b-versatile",
+        "options": {
+          "temperature": 0.1
+        }
+      },
+      "id": "362d02b9-4388-4989-a052-6f464c8a8c9d",
+      "name": "Groq Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [
+        176,
+        208
+      ],
+      "credentials": {
+        "groqApi": {
+          "id": "aIYaQJU1ehbAExQk",
+          "name": "Groq account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "contextWindowLength": 10
+      },
+      "id": "4c7f476e-357e-42b4-b711-4ee74c2dfadf",
+      "name": "Window Buffer Memory",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        320,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "name": "search_acme_kb",
+        "description": "Search the ACME knowledge base. Use this for any question about HR policies, PTO, compliance, data privacy, AML, product documentation, DataBridge, or employee onboarding.",
+        "workflowId": {
+          "__rl": true,
+          "value": "dbnJNHkImgsKT7mB",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/dbnJNHkImgsKT7mB",
+          "cachedResultName": "2A — Retriever Tool (Sub-Workflow)"
+        }
+      },
+      "id": "f1f3821c-291e-4014-8523-0e25e8dc9d3b",
+      "name": "KB Search Tool",
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        448,
+        208
+      ],
+      "notes": "SETUP: After importing both workflows, open this node\nand select '2A — Retriever Tool (Sub-Workflow)'\nfrom the workflow dropdown."
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When chat message received": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Window Buffer Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "KB Search Tool": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "cbb9eb95-d544-46db-80cf-586e08d8b8b2",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "2f84799f377210bb373f61a59440873fec4ae3f3cea60e8a19fd0955faa44541"
+  },
+  "id": "hOoKxrWbE9CSy7X3",
+  "tags": [
+    {
+      "updatedAt": "2026-05-12T08:59:29.326Z",
+      "createdAt": "2026-05-12T08:59:29.326Z",
+      "id": "BStDkf4ggYQaHAYM",
+      "name": "RAG"
+    },
+    {
+      "updatedAt": "2026-05-24T00:35:44.185Z",
+      "createdAt": "2026-05-24T00:35:44.185Z",
+      "id": "pPNtBzRjWFXDZKfx",
+      "name": "Project-2A"
+    }
+  ]
+}

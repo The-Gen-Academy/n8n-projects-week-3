@@ -1,0 +1,246 @@
+{
+  "name": "2B — Financial Docs Ingestion (Fixed)",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "386e82de-23bd-4660-b020-effa1f029846",
+      "name": "Start",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [1056, 1584]
+    },
+    {
+      "parameters": {
+        "jsCode": "const BASE = 'https://raw.githubusercontent.com/abhinav-genacademy/n8n-projects-week-2/refs/heads/main/';\n\nconst docs = [\n  { FILE_URL: BASE + 'nexgen_10k_2024.txt',              label: 'NexGen 10-K Annual Report 2024' },\n  { FILE_URL: BASE + 'nexgen_q3_2024_earnings_call.txt', label: 'NexGen Q3 2024 Earnings Call Transcript' },\n  { FILE_URL: BASE + 'nexgen_credit_agreement_2024.txt', label: 'NexGen Credit Agreement 2024' }\n];\n\nreturn docs.map(d => ({ json: d }));"
+      },
+      "id": "561d4f38-e3bb-43c3-a948-d121c2e44fb3",
+      "name": "Document Manifest",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1264, 1584],
+      "notes": "3 financial documents.\nEach flows into BOTH branches simultaneously:\n- Keyword branch: BM25 sparse vectors → Pinecone sparse index\n- Semantic branch: dense embeddings → Pinecone dense index"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.FILE_URL }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "id": "b015f188-ff7c-40a6-9a72-b8ad58371f75",
+      "name": "Fetch Document",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1488, 1584]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "s1",
+              "name": "content",
+              "value": "={{ $json }}",
+              "type": "string"
+            },
+            {
+              "id": "s2",
+              "name": "label",
+              "value": "={{ $('Document Manifest').item.json.label }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "2d93985f-7f11-4472-b26b-354cbf17c247",
+      "name": "Set Content",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1680, 1584]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ── BM25-STYLE SPARSE VECTOR BUILDER ───────────────────────────────────────\n// Replaces the old HuggingFace embedding approach for the keyword branch.\n// True keyword search: no neural network, no semantic similarity.\n// Each token maps to a sparse dimension via FNV-1a hash; value = TF score.\n//\n// Output: one item per batch of ≤100 vectors (Pinecone upsert limit).\n// ────────────────────────────────────────────────────────────────────────────\n\nconst text = $json.content;\nconst label = $json.label;\nconst CHUNK_SIZE = 500;\nconst CHUNK_OVERLAP = 100;\nconst MAX_SPARSE_DIM = 30000;\n\nconst STOPWORDS = new Set([\n  'the','a','an','and','or','but','in','on','at','to','for','of',\n  'with','by','from','is','are','was','were','be','been','have','has',\n  'had','do','does','did','will','would','could','should','that','this',\n  'it','as','not','if','they','we','you','he','she','i','its','about'\n]);\n\n// Split into overlapping chunks\nconst chunks = [];\nlet start = 0;\nwhile (start < text.length) {\n  const end = Math.min(start + CHUNK_SIZE, text.length);\n  chunks.push(text.slice(start, end));\n  if (end === text.length) break;\n  start += CHUNK_SIZE - CHUNK_OVERLAP;\n}\n\n// FNV-1a hash: token string → stable non-negative integer (sparse dimension)\nfunction fnv1a(str) {\n  let h = 2166136261 >>> 0;\n  for (let i = 0; i < str.length; i++) {\n    h ^= str.charCodeAt(i);\n    h = Math.imul(h, 16777619) >>> 0;\n  }\n  return h % MAX_SPARSE_DIM;\n}\n\n// Build one sparse vector per chunk\nconst vectors = chunks.map((chunk, i) => {\n  const tokens = chunk.toLowerCase()\n    .split(/[^a-z0-9]+/)\n    .filter(t => t.length > 2 && !STOPWORDS.has(t));\n\n  const tf = {};\n  for (const t of tokens) tf[t] = (tf[t] || 0) + 1;\n\n  const maxFreq = Math.max(1, ...Object.values(tf));\n  const seenIdx = new Set();\n  const indices = [];\n  const values = [];\n\n  for (const [token, freq] of Object.entries(tf)) {\n    const idx = fnv1a(token);\n    if (!seenIdx.has(idx)) {  // skip hash collisions (keep first)\n      seenIdx.add(idx);\n      indices.push(idx);\n      values.push(parseFloat((freq / maxFreq).toFixed(4)));\n    }\n  }\n\n  return {\n    id: `kw-${label.replace(/[^a-z0-9]/gi, '-').toLowerCase()}-${i}`,\n    values: new Array(384).fill(1e-7),\n    sparseValues: { indices, values },\n    metadata: { text: chunk, label, strategy: 'keyword', chunk_index: i }\n  };\n}).filter(v => v.sparseValues.indices.length > 0);\n\n// Batch into groups of 100 for Pinecone upsert limit\nconst batches = [];\nfor (let i = 0; i < vectors.length; i += 100) {\n  batches.push({ json: { vectors: vectors.slice(i, i + 100) } });\n}\nreturn batches;"
+      },
+      "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "name": "Code — BM25 Chunker",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1936, 1376],
+      "notes": "TRUE KEYWORD SEARCH — no embeddings used here.\n\nWhat this does:\n1. Splits document into 500-char chunks (100 overlap)\n2. Tokenises each chunk (lowercase, strip stopwords)\n3. Computes term-frequency (TF) scores\n4. Maps tokens → sparse dimension indices via FNV-1a hash\n5. Pads a zero-filled dense vector (384 dims) — required by Pinecone\n6. Outputs Pinecone-formatted vectors in batches of 100\n\nPRE-REQUISITE — recreate nexgen-financial-kb:\n  Delete existing index, then create new with:\n  Name:    nexgen-financial-kb\n  Dims:    384\n  Metric:  dotproduct   ← required for sparse search\n  Type:    Serverless (AWS us-east-1)\n\nBoth branches share the same index.\nmetadata.strategy differentiates them at query time."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://YOUR-NEXGEN-FINANCIAL-KB-HOST.svc.YOUR-REGION.pinecone.io/vectors/upsert",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ vectors: $json.vectors }) }}",
+        "options": {}
+      },
+      "id": "f9e8d7c6-b5a4-3210-fedc-ba9876543210",
+      "name": "HTTP Request — Pinecone Sparse Upsert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2200, 1376],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_YOUR_HEADER_AUTH_CREDENTIAL_ID",
+          "name": "Pinecone API Key (Header Auth)"
+        }
+      },
+      "notes": "Calls Pinecone REST API to upsert sparse vectors.\nReceives batches of ≤100 vectors from the BM25 Chunker node.\nBoth branches share the same nexgen-financial-kb index.\n\nSETUP (3 steps):\n1. Replace the URL with your nexgen-financial-kb Host URL\n   → Pinecone console → nexgen-financial-kb → Host\n\n2. Create an n8n 'Header Auth' credential:\n   → Credentials → New → Header Auth\n   → Name:  Api-Key\n   → Value: <your Pinecone API key>\n\n3. Select that credential in this node's Authentication field"
+    },
+    {
+      "parameters": {
+        "mode": "insert",
+        "pineconeIndex": {
+          "__rl": true,
+          "value": "nexgen-financial-kb",
+          "mode": "list",
+          "cachedResultName": "nexgen-financial-kb"
+        },
+        "options": {}
+      },
+      "id": "03f94780-37d6-4315-bc24-a0c7ac40d29d",
+      "name": "Pinecone — Semantic",
+      "type": "@n8n/n8n-nodes-langchain.vectorStorePinecone",
+      "typeVersion": 1,
+      "position": [1936, 1792],
+      "credentials": {
+        "pineconeApi": {
+          "id": "qFORTiuyfEG38hbc",
+          "name": "Pinecone account"
+        }
+      },
+      "notes": "Dense semantic index (UNCHANGED)\n1500 char chunks / 300 overlap\nMetadata: strategy=semantic\nIndex: nexgen-financial-kb (existing)"
+    },
+    {
+      "parameters": {
+        "modelName": "sentence-transformers/paraphrase-MiniLM-L6-v2",
+        "options": {}
+      },
+      "id": "6d0db67d-5a16-456a-9d62-01de3f51f65c",
+      "name": "Embeddings — Semantic",
+      "type": "@n8n/n8n-nodes-langchain.embeddingsHuggingFaceInference",
+      "typeVersion": 1,
+      "position": [1936, 1632],
+      "credentials": {
+        "huggingFaceApi": {
+          "id": "qgT0Zi0HBVyMmhrk",
+          "name": "Hugging Face account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "dataType": "text",
+        "options": {
+          "metadata": {
+            "metadataValues": [
+              {
+                "name": "label",
+                "value": "={{ $json.label }}"
+              },
+              {
+                "name": "strategy",
+                "value": "semantic"
+              }
+            ]
+          }
+        }
+      },
+      "id": "2df82a7c-d180-44be-b20b-9ae835362bc2",
+      "name": "Loader — Semantic",
+      "type": "@n8n/n8n-nodes-langchain.documentDefaultDataLoader",
+      "typeVersion": 1,
+      "position": [2368, 1856]
+    },
+    {
+      "parameters": {
+        "chunkSize": 1500,
+        "chunkOverlap": 300,
+        "options": {}
+      },
+      "id": "106d5c04-22b0-47c0-b9c6-e9e0c8f9145d",
+      "name": "Splitter — Semantic",
+      "type": "@n8n/n8n-nodes-langchain.textSplitterRecursiveCharacterTextSplitter",
+      "typeVersion": 1,
+      "position": [2384, 2016],
+      "notes": "1500 chars, 300 overlap — larger chunks\npreserve section context for richer answers"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Start": {
+      "main": [
+        [{"node": "Document Manifest", "type": "main", "index": 0}]
+      ]
+    },
+    "Document Manifest": {
+      "main": [
+        [{"node": "Fetch Document", "type": "main", "index": 0}]
+      ]
+    },
+    "Fetch Document": {
+      "main": [
+        [{"node": "Set Content", "type": "main", "index": 0}]
+      ]
+    },
+    "Set Content": {
+      "main": [
+        [
+          {"node": "Code — BM25 Chunker", "type": "main", "index": 0},
+          {"node": "Pinecone — Semantic", "type": "main", "index": 0}
+        ]
+      ]
+    },
+    "Code — BM25 Chunker": {
+      "main": [
+        [{"node": "HTTP Request — Pinecone Sparse Upsert", "type": "main", "index": 0}]
+      ]
+    },
+    "Embeddings — Semantic": {
+      "ai_embedding": [
+        [{"node": "Pinecone — Semantic", "type": "ai_embedding", "index": 0}]
+      ]
+    },
+    "Loader — Semantic": {
+      "ai_document": [
+        [{"node": "Pinecone — Semantic", "type": "ai_document", "index": 0}]
+      ]
+    },
+    "Splitter — Semantic": {
+      "ai_textSplitter": [
+        [{"node": "Loader — Semantic", "type": "ai_textSplitter", "index": 0}]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "20614828-6175-4613-8c95-05be457dec36",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "2f84799f377210bb373f61a59440873fec4ae3f3cea60e8a19fd0955faa44541"
+  },
+  "id": "dvhOfRorhgRFHyvS",
+  "tags": [
+    {
+      "name": "FINAL",
+      "id": "Qiw0RVu73PasExAI",
+      "updatedAt": "2026-05-26T01:19:11.647Z",
+      "createdAt": "2026-05-26T01:19:11.647Z"
+    }
+  ]
+}

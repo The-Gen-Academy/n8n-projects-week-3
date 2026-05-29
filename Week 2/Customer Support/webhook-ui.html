@@ -1,0 +1,788 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>2D Customer Support — Webhook UI</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --surface-2: #222636;
+      --border: #2e3347;
+      --accent: #6366f1;
+      --accent-hover: #7c7ff5;
+      --accent-light: rgba(99,102,241,0.12);
+      --green: #22c55e;
+      --green-bg: rgba(34,197,94,0.1);
+      --amber: #f59e0b;
+      --amber-bg: rgba(245,158,11,0.1);
+      --red: #ef4444;
+      --red-bg: rgba(239,68,68,0.1);
+      --text: #e2e8f0;
+      --text-muted: #8892a4;
+      --text-dim: #4a5568;
+      --radius: 10px;
+      --radius-sm: 6px;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 32px 16px 64px;
+    }
+
+    /* ── Header ── */
+    .header {
+      width: 100%;
+      max-width: 780px;
+      margin-bottom: 32px;
+    }
+    .header-top {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 8px;
+    }
+    .badge-2d {
+      background: var(--accent-light);
+      border: 1px solid var(--accent);
+      color: var(--accent);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .06em;
+      padding: 3px 8px;
+      border-radius: 20px;
+      text-transform: uppercase;
+    }
+    .header h1 {
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .header p {
+      font-size: 13px;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+
+    /* ── Config bar ── */
+    .config-bar {
+      width: 100%;
+      max-width: 780px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px 18px;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .config-bar label {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+      white-space: nowrap;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+    }
+    .config-bar input {
+      flex: 1;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text);
+      font-size: 13px;
+      font-family: "Courier New", monospace;
+      padding: 6px 10px;
+      outline: none;
+      transition: border-color .15s;
+    }
+    .config-bar input:focus { border-color: var(--accent); }
+    .dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--text-dim);
+      flex-shrink: 0;
+      transition: background .2s;
+    }
+    .dot.active { background: var(--green); box-shadow: 0 0 6px var(--green); }
+
+    /* ── Main card ── */
+    .card {
+      width: 100%;
+      max-width: 780px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+
+    /* ── Form section ── */
+    .form-section {
+      padding: 24px 28px;
+      border-bottom: 1px solid var(--border);
+    }
+    .form-row {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      flex: 1;
+    }
+    .form-group.narrow { flex: 0 0 220px; }
+    .form-group label {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: .06em;
+    }
+    .form-group input,
+    .form-group textarea {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text);
+      font-size: 14px;
+      padding: 10px 13px;
+      outline: none;
+      transition: border-color .15s;
+      font-family: inherit;
+      resize: none;
+    }
+    .form-group input:focus,
+    .form-group textarea:focus { border-color: var(--accent); }
+    .form-group textarea { min-height: 90px; line-height: 1.5; }
+
+    .form-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .hint {
+      font-size: 12px;
+      color: var(--text-dim);
+    }
+    .btn-submit {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: var(--radius-sm);
+      padding: 10px 22px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: background .15s, opacity .15s;
+    }
+    .btn-submit:hover:not(:disabled) { background: var(--accent-hover); }
+    .btn-submit:disabled { opacity: .5; cursor: not-allowed; }
+    .spinner {
+      width: 14px; height: 14px;
+      border: 2px solid rgba(255,255,255,.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin .6s linear infinite;
+      display: none;
+    }
+    .btn-submit.loading .spinner { display: block; }
+    .btn-submit.loading .btn-label { display: none; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Response section ── */
+    .response-section {
+      padding: 24px 28px;
+      display: none;
+    }
+    .response-section.visible { display: block; }
+
+    .response-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    .response-header h2 {
+      font-size: 15px;
+      font-weight: 700;
+    }
+    .status-badge {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+      padding: 3px 10px;
+      border-radius: 20px;
+    }
+    .status-badge.resolved {
+      background: var(--green-bg);
+      color: var(--green);
+      border: 1px solid rgba(34,197,94,.3);
+    }
+    .status-badge.escalated {
+      background: var(--amber-bg);
+      color: var(--amber);
+      border: 1px solid rgba(245,158,11,.3);
+    }
+    .status-badge.error {
+      background: var(--red-bg);
+      color: var(--red);
+      border: 1px solid rgba(239,68,68,.3);
+    }
+    .http-code {
+      margin-left: auto;
+      font-size: 12px;
+      font-family: monospace;
+      color: var(--text-muted);
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      padding: 2px 8px;
+      border-radius: 4px;
+    }
+    .http-code.ok { color: var(--green); }
+    .http-code.accepted { color: var(--amber); }
+    .http-code.err { color: var(--red); }
+
+    /* ── Answer block ── */
+    .answer-block {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px 18px;
+      font-size: 14px;
+      line-height: 1.7;
+      color: var(--text);
+      margin-bottom: 20px;
+      white-space: pre-wrap;
+    }
+    .answer-block.escalation {
+      border-color: rgba(245,158,11,.3);
+      background: var(--amber-bg);
+      color: var(--amber);
+    }
+
+    /* ── Ticket box ── */
+    .ticket-box {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 12px 16px;
+      margin-bottom: 20px;
+    }
+    .ticket-icon { font-size: 20px; }
+    .ticket-info .label {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      color: var(--text-muted);
+    }
+    .ticket-info .value {
+      font-size: 15px;
+      font-weight: 700;
+      font-family: monospace;
+      color: var(--amber);
+      margin-top: 2px;
+    }
+    .ticket-meta {
+      margin-left: auto;
+      text-align: right;
+    }
+    .ticket-meta .priority {
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      padding: 2px 8px;
+      border-radius: 4px;
+    }
+    .priority.high { background: var(--red-bg); color: var(--red); }
+    .priority.medium { background: var(--amber-bg); color: var(--amber); }
+    .priority.low { background: var(--green-bg); color: var(--green); }
+
+    /* ── Confidence meter ── */
+    .section-label {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      color: var(--text-muted);
+      margin-bottom: 10px;
+    }
+    .confidence-row {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 20px;
+    }
+    .confidence-bar-wrap {
+      flex: 1;
+      height: 8px;
+      background: var(--bg);
+      border-radius: 4px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+    }
+    .confidence-bar {
+      height: 100%;
+      border-radius: 4px;
+      transition: width .6s ease;
+    }
+    .confidence-val {
+      font-size: 13px;
+      font-weight: 700;
+      font-family: monospace;
+      min-width: 44px;
+      text-align: right;
+    }
+    .threshold-note {
+      font-size: 12px;
+      color: var(--text-dim);
+    }
+
+    /* ── Docs grid ── */
+    .docs-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-bottom: 20px;
+    }
+    .doc-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 10px 14px;
+    }
+    .doc-rank {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-dim);
+      min-width: 20px;
+    }
+    .doc-title {
+      flex: 1;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text);
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+    }
+    .doc-cat {
+      font-size: 11px;
+      color: var(--text-muted);
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 1px 7px;
+      white-space: nowrap;
+    }
+    .doc-scores {
+      display: flex;
+      gap: 8px;
+    }
+    .score-chip {
+      font-size: 11px;
+      font-family: monospace;
+      padding: 1px 6px;
+      border-radius: 4px;
+    }
+    .score-chip.hybrid { background: var(--accent-light); color: var(--accent); }
+    .score-chip.sem { background: rgba(34,197,94,.08); color: var(--green); }
+    .score-chip.kw { background: rgba(245,158,11,.08); color: var(--amber); }
+
+    /* ── Raw JSON toggle ── */
+    .raw-toggle {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      font-size: 12px;
+      padding: 5px 12px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      transition: border-color .15s, color .15s;
+    }
+    .raw-toggle:hover { border-color: var(--accent); color: var(--accent); }
+    .raw-json {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 14px;
+      font-size: 12px;
+      font-family: "Courier New", monospace;
+      color: #94a3b8;
+      white-space: pre;
+      overflow-x: auto;
+      margin-top: 10px;
+      display: none;
+      line-height: 1.5;
+    }
+    .raw-json.visible { display: block; }
+
+    /* ── Error state ── */
+    .error-block {
+      background: var(--red-bg);
+      border: 1px solid rgba(239,68,68,.3);
+      border-radius: var(--radius);
+      padding: 14px 18px;
+      font-size: 13px;
+      color: var(--red);
+      line-height: 1.5;
+    }
+
+    /* ── History list ── */
+    .history-section {
+      width: 100%;
+      max-width: 780px;
+      margin-top: 28px;
+    }
+    .history-section h3 {
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      color: var(--text-dim);
+      margin-bottom: 12px;
+    }
+    .history-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .history-item {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 10px 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      cursor: pointer;
+      transition: border-color .15s;
+    }
+    .history-item:hover { border-color: var(--accent); }
+    .history-item .hi-status {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .hi-status.resolved { background: var(--green); }
+    .hi-status.escalated { background: var(--amber); }
+    .hi-status.error { background: var(--red); }
+    .history-item .hi-query {
+      flex: 1;
+      font-size: 13px;
+      color: var(--text-muted);
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+    }
+    .history-item .hi-time {
+      font-size: 11px;
+      color: var(--text-dim);
+      font-family: monospace;
+      flex-shrink: 0;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <div class="header">
+    <div class="header-top">
+      <span class="badge-2d">Workflow 2D</span>
+      <h1>Customer Support Webhook UI</h1>
+    </div>
+    <p>Hybrid semantic + keyword search · GPT-4o answer generation · Auto-escalation at confidence &lt; 0.7</p>
+  </div>
+
+  <!-- Config bar -->
+  <div class="config-bar">
+    <label>Webhook URL</label>
+    <input type="text" id="webhookUrl"
+      value="http://localhost:5678/webhook/support-query"
+      placeholder="http://localhost:5678/webhook/support-query" />
+    <div class="dot" id="statusDot" title="Unchecked"></div>
+  </div>
+
+  <!-- Main card -->
+  <div class="card">
+
+    <!-- Form -->
+    <div class="form-section">
+      <div class="form-row">
+        <div class="form-group narrow">
+          <label>Customer ID</label>
+          <input type="text" id="customerId" placeholder="e.g. usr_abc123" />
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Support Query</label>
+          <textarea id="query" placeholder="e.g. How do I cancel my subscription and get a refund?"></textarea>
+        </div>
+      </div>
+      <div class="form-footer">
+        <span class="hint">POST → <code style="font-family:monospace;color:var(--text-muted)">/support-query</code></span>
+        <button class="btn-submit" id="submitBtn" onclick="submitQuery()">
+          <div class="spinner"></div>
+          <span class="btn-label">Send Query</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Response -->
+    <div class="response-section" id="responseSection">
+      <div class="response-header">
+        <h2>Response</h2>
+        <span class="status-badge" id="statusBadge">—</span>
+        <span class="http-code" id="httpCode">—</span>
+      </div>
+
+      <!-- Answer / escalation message -->
+      <div id="answerBlock"></div>
+
+      <!-- Ticket info (escalated only) -->
+      <div id="ticketBlock"></div>
+
+      <!-- Confidence meter -->
+      <div id="confidenceBlock"></div>
+
+      <!-- Top docs -->
+      <div id="docsBlock"></div>
+
+      <!-- Raw JSON -->
+      <div style="display:flex;justify-content:flex-end;">
+        <button class="raw-toggle" onclick="toggleRaw()">{ } Raw JSON</button>
+      </div>
+      <pre class="raw-json" id="rawJson"></pre>
+    </div>
+
+  </div>
+
+  <!-- History -->
+  <div class="history-section" id="historySection" style="display:none">
+    <h3>Query History</h3>
+    <div class="history-list" id="historyList"></div>
+  </div>
+
+  <script>
+    const history = [];
+
+    function setLoading(on) {
+      const btn = document.getElementById('submitBtn');
+      btn.disabled = on;
+      btn.classList.toggle('loading', on);
+    }
+
+    function toggleRaw() {
+      const el = document.getElementById('rawJson');
+      el.classList.toggle('visible');
+    }
+
+    function colorForConfidence(c) {
+      if (c >= 0.7) return 'var(--green)';
+      if (c >= 0.4) return 'var(--amber)';
+      return 'var(--red)';
+    }
+
+    function renderResponse(data, httpStatus, isError) {
+      const section = document.getElementById('responseSection');
+      section.classList.add('visible');
+
+      // Status badge & HTTP code
+      const badge = document.getElementById('statusBadge');
+      const code = document.getElementById('httpCode');
+
+      if (isError) {
+        badge.textContent = 'Error';
+        badge.className = 'status-badge error';
+        code.textContent = `HTTP ${httpStatus}`;
+        code.className = 'http-code err';
+        document.getElementById('answerBlock').innerHTML =
+          `<div class="error-block">${escHtml(JSON.stringify(data, null, 2))}</div>`;
+        document.getElementById('ticketBlock').innerHTML = '';
+        document.getElementById('confidenceBlock').innerHTML = '';
+        document.getElementById('docsBlock').innerHTML = '';
+        document.getElementById('rawJson').textContent = JSON.stringify(data, null, 2);
+        return;
+      }
+
+      const status = data.status || 'unknown';
+      badge.textContent = status;
+      badge.className = `status-badge ${status}`;
+      code.textContent = `HTTP ${httpStatus}`;
+      code.className = `http-code ${httpStatus === 200 ? 'ok' : httpStatus === 202 ? 'accepted' : 'err'}`;
+
+      // Answer / escalation message
+      const answerEl = document.getElementById('answerBlock');
+      if (status === 'resolved') {
+        answerEl.innerHTML = `<div class="answer-block">${escHtml(data.answer || '')}</div>`;
+      } else {
+        answerEl.innerHTML = `<div class="answer-block escalation">${escHtml(data.message || '')}</div>`;
+      }
+
+      // Ticket block
+      const ticketEl = document.getElementById('ticketBlock');
+      if (data.ticket_id) {
+        const priority = data.metadata?.priority || 'medium';
+        ticketEl.innerHTML = `
+          <div class="ticket-box">
+            <span class="ticket-icon">🎫</span>
+            <div class="ticket-info">
+              <div class="label">Ticket Created</div>
+              <div class="value">${escHtml(data.ticket_id)}</div>
+            </div>
+            <div class="ticket-meta">
+              <span class="priority ${priority}">${priority}</span>
+            </div>
+          </div>`;
+      } else {
+        ticketEl.innerHTML = '';
+      }
+
+      // Confidence meter
+      const meta = data.metadata || {};
+      const confEl = document.getElementById('confidenceBlock');
+      if (meta.confidence !== undefined) {
+        const pct = Math.round(meta.confidence * 100);
+        const color = colorForConfidence(meta.confidence);
+        const threshold = meta.threshold ?? 0.7;
+        confEl.innerHTML = `
+          <div class="section-label">Confidence Score</div>
+          <div class="confidence-row">
+            <div class="confidence-bar-wrap">
+              <div class="confidence-bar" style="width:${pct}%;background:${color}"></div>
+            </div>
+            <span class="confidence-val" style="color:${color}">${meta.confidence.toFixed(3)}</span>
+            <span class="threshold-note">threshold: ${threshold}</span>
+          </div>`;
+      } else {
+        confEl.innerHTML = '';
+      }
+
+      // Top docs
+      const docsEl = document.getElementById('docsBlock');
+      const docs = meta.top_documents || meta.top_candidates || [];
+      if (docs.length) {
+        const rows = docs.map((d, i) => {
+          const hybridScore = d.hybrid_score ?? d.hybridScore;
+          const semScore = d.semantic_score ?? d.semanticScore;
+          const kwScore = d.keyword_score ?? d.keywordScore;
+          return `
+            <div class="doc-row">
+              <span class="doc-rank">#${i + 1}</span>
+              <span class="doc-title" title="${escHtml(d.title || '')}">${escHtml(d.title || '—')}</span>
+              <span class="doc-cat">${escHtml(d.category || '')}</span>
+              <div class="doc-scores">
+                ${hybridScore !== undefined ? `<span class="score-chip hybrid">H ${hybridScore.toFixed(3)}</span>` : ''}
+                ${semScore !== undefined ? `<span class="score-chip sem">S ${semScore.toFixed(3)}</span>` : ''}
+                ${kwScore !== undefined ? `<span class="score-chip kw">K ${kwScore.toFixed(3)}</span>` : ''}
+              </div>
+            </div>`;
+        }).join('');
+        docsEl.innerHTML = `<div class="section-label">Top Matched Documents</div><div class="docs-grid">${rows}</div>`;
+      } else {
+        docsEl.innerHTML = '';
+      }
+
+      document.getElementById('rawJson').textContent = JSON.stringify(data, null, 2);
+    }
+
+    async function submitQuery() {
+      const url = document.getElementById('webhookUrl').value.trim();
+      const query = document.getElementById('query').value.trim();
+      const customerId = document.getElementById('customerId').value.trim();
+
+      if (!url) { alert('Enter a webhook URL.'); return; }
+      if (!query) { alert('Enter a support query.'); return; }
+
+      setLoading(true);
+
+      const body = { query };
+      if (customerId) body.customer_id = customerId;
+
+      let httpStatus = 0;
+      let data = null;
+      let isError = false;
+
+      try {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        httpStatus = res.status;
+        try { data = await res.json(); } catch { data = { raw: await res.text() }; }
+        isError = !res.ok || !data.success;
+        document.getElementById('statusDot').className = 'dot active';
+      } catch (err) {
+        isError = true;
+        data = { error: err.message, detail: 'Could not reach the webhook. Make sure n8n is running and the workflow is active.' };
+        document.getElementById('statusDot').className = 'dot';
+      }
+
+      renderResponse(data, httpStatus, isError);
+      addHistory(query, data?.status || (isError ? 'error' : 'unknown'));
+      setLoading(false);
+    }
+
+    function addHistory(query, status) {
+      const now = new Date();
+      const time = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      history.unshift({ query, status, time });
+      if (history.length > 10) history.pop();
+      renderHistory();
+    }
+
+    function renderHistory() {
+      const section = document.getElementById('historySection');
+      const list = document.getElementById('historyList');
+      section.style.display = history.length ? 'block' : 'none';
+      list.innerHTML = history.map((h, i) => `
+        <div class="history-item" onclick="replayQuery(${i})">
+          <div class="hi-status ${h.status}"></div>
+          <span class="hi-query">${escHtml(h.query)}</span>
+          <span class="hi-time">${h.time}</span>
+        </div>`).join('');
+    }
+
+    function replayQuery(i) {
+      document.getElementById('query').value = history[i].query;
+    }
+
+    function escHtml(s) {
+      return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    // Submit on Ctrl+Enter / Cmd+Enter
+    document.getElementById('query').addEventListener('keydown', e => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') submitQuery();
+    });
+  </script>
+</body>
+</html>
